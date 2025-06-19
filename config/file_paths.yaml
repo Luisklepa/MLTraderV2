@@ -1,0 +1,46 @@
+# File path configuration
+
+data:
+  raw:
+    directory: data/raw
+    price_files:
+      btc: btcusdt_prices.csv
+      eth: ethusdt_prices.csv
+  features:
+    directory: data/features
+    pattern: btcusdt_ml_dataset_*.csv
+  processed:
+    directory: data/processed
+
+models:
+  directory: models
+  random_forest:
+    directory: models/random_forest
+    pattern: random_forest_model_*.pkl
+  xgboost:
+    directory: models/xgboost
+    pattern: xgboost_model_*.pkl
+  metadata:
+    directory: models
+    pattern: model_metadata_*.pkl
+
+results:
+  feature_importance:
+    directory: results/feature_importance
+    pattern: feature_importance_*.csv
+  plots:
+    directory: results/plots
+    equity_curves:
+      pattern: equity_curve_*.png
+    feature_importance:
+      file: feature_importance.png
+    roc_curve:
+      file: roc_curve.png
+  metrics:
+    directory: results/metrics
+    pattern: metrics_*.json
+
+cache:
+  directory: data/cache
+  max_size: 1GB
+  ttl: 3600  # seconds 

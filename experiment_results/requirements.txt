@@ -1,0 +1,5 @@
+optuna
+scikit-learn 
+ta  # Indicadores técnicos para features ML 
+rich
+questionary 

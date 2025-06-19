@@ -1,0 +1,8 @@
+Window: 10
+Threshold: 0.005
+AUC: 0.6094
+Accuracy: 0.8481
+Precision (1): 0.3333
+Recall (1): 0.0595
+False Positives: 10
+False Negatives: 79

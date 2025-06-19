@@ -1,0 +1,8 @@
+
+=== INSIGHTS AUTOMÁTICOS ===
+Mejor experimento: win20_thr100_20250617
+AUC: 0.7549
+Feature más discriminante (importancia): atr_14
+Media FP: 459.0598 | Media FN: 252.1870 | Diferencia: 206.8728
+Threshold óptimo: 0.01
+Ratio de clases en test: {1: 0.9310344827586207, 0: 0.06896551724137931}

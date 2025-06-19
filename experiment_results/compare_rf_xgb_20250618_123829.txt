@@ -1,0 +1,46 @@
+=== COMPARATIVA RANDOM FOREST vs XGBOOST ===
+Dataset: btcusdt_ml_dataset_win10_thr100.csv
+
+--- Random Forest ---
+              precision    recall  f1-score   support
+
+           0       0.99      0.99      0.99       566
+           1       0.88      0.82      0.85        28
+
+    accuracy                           0.99       594
+   macro avg       0.94      0.91      0.92       594
+weighted avg       0.99      0.99      0.99       594
+
+Top 10 features RF:
+vwap                 0.050040
+is_ny_session        0.034564
+vol_jump_flag        0.030563
+is_london_session    0.028621
+is_asian_session     0.024611
+sma_100              0.018057
+hour                 0.017432
+ema_100              0.015111
+is_weekend           0.015100
+bb_width_50          0.013802
+
+--- XGBoost ---
+              precision    recall  f1-score   support
+
+           0       0.99      0.99      0.99       566
+           1       0.74      0.82      0.78        28
+
+    accuracy                           0.98       594
+   macro avg       0.87      0.90      0.88       594
+weighted avg       0.98      0.98      0.98       594
+
+Top 10 features XGB:
+close_rolling_min_20        0.130194
+volume_price_trend          0.088867
+is_asian_session            0.034096
+bb_width_50                 0.032602
+sma_100                     0.031588
+rsi_14_atr_14_logic_high    0.028494
+rsi_14_lag_1                0.026681
+close_to_max_5              0.022559
+volatility_and_bullish      0.021900
+rolling_min_50              0.019180

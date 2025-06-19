@@ -1,0 +1,37 @@
+--- Importancia de features (top 20) ---
+close_rolling_min_20        0.068111
+sma_100                     0.051958
+volume_price_trend          0.033179
+bb_width_50                 0.032028
+is_asian_session            0.028872
+volatility_and_bullish      0.024808
+is_london_session           0.024437
+bb_width_20_high            0.021818
+vwap                        0.021547
+hour                        0.020069
+rsi_14_atr_14_logic_high    0.019456
+donchian_low_20             0.018229
+ema_20_sma_50_diff          0.018150
+body_return5_mean           0.015195
+vol_jump                    0.014831
+macd_signal                 0.014037
+rolling_max_50              0.013722
+volatility_5                0.013668
+rolling_min_50              0.013492
+ema_200                     0.013258
+dtype: float32
+
+--- Classification report (out-of-sample) ---
+              precision    recall  f1-score   support
+
+           0     1.0000    0.9630    0.9811       567
+           1     0.5625    1.0000    0.7200        27
+
+    accuracy                         0.9646       594
+   macro avg     0.7812    0.9815    0.8506       594
+weighted avg     0.9801    0.9646    0.9693       594
+
+
+--- Confusion matrix ---
+[[546  21]
+ [  0  27]]
