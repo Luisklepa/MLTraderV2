@@ -1,8 +1,8 @@
-# Backtrader: ML-Powered Cryptocurrency Trading System
+# MLTrader: ML-Powered Cryptocurrency Trading System
 
 ## Overview
 
-Backtrader is a sophisticated cryptocurrency trading system that combines machine learning with robust trading strategies. The system uses advanced ML models to predict market movements and generate trading signals, while implementing comprehensive risk management and portfolio optimization.
+MLTtrader is a sophisticated cryptocurrency trading system that combines machine learning with robust trading strategies. The system uses advanced ML models to predict market movements and generate trading signals, while implementing comprehensive risk management and portfolio optimization.
 
 ```mermaid
 graph TD
