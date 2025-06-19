@@ -270,9 +270,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Contact
 
-- Author: Your Name
-- Email: your.email@example.com
-- GitHub: [@yourusername](https://github.com/yourusername)
+- Author: Luis Klepatzky
+- Email: Luisklepa@Thesynaptek.com
+- GitHub: @luisklepa https://github.com/luisklepa)
 
 ## Roadmap
 
