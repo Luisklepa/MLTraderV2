@@ -7,7 +7,7 @@ import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from scripts.run_ml_backtest import run_backtest, prepare_data
+from scripts.run_ml_backtest import run_backtest
 
 class WalkForwardAnalyzer:
     """
@@ -102,9 +102,9 @@ class WalkForwardAnalyzer:
             print(f"Train period: {train_data.index[0]} to {train_data.index[-1]}")
             print(f"Test period: {test_data.index[0]} to {test_data.index[-1]}")
             
-            # Prepare data
-            train_data = prepare_data(train_data)
-            test_data = prepare_data(test_data)
+            # Si necesitas preprocesar los datos, hazlo aquí o implementa una función local
+            # train_data = prepare_data(train_data)
+            # test_data = prepare_data(test_data)
             
             # Run backtest on train data
             train_results = run_backtest(

@@ -1,10 +1,18 @@
 import pandas as pd
 import numpy as np
-import talib
+from ta.momentum import RSIIndicator
+from ta.volatility import BollingerBands, AverageTrueRange
+from ta.trend import MACD
 from sklearn.preprocessing import StandardScaler, RobustScaler
 import warnings
 from sklearn.ensemble import RandomForestClassifier
 warnings.filterwarnings('ignore')
+
+# --- AGREGADO: Importar talib con manejo de error claro ---
+try:
+    import talib
+except ImportError as e:
+    raise ImportError("No se pudo importar 'talib'. Asegúrate de activar el entorno virtual correcto (venv) donde está instalado talib para tu versión de Python.\n\nEjemplo en Windows:\n    .\\venv\\Scripts\\activate\n\nLuego ejecuta el script de nuevo.") from e
 
 # === FEATURES AVANZADOS DE MOMENTUM ===
 def add_advanced_momentum_features(df):
@@ -21,8 +29,8 @@ def add_advanced_momentum_features(df):
     df['close_to_min_20'] = (df['close'] - df['close_rolling_min_20']) / df['close_rolling_min_20']
     # Señales booleanas de RSI extremos
     if 'rsi_14' not in df.columns:
-        import talib
-        df['rsi_14'] = talib.RSI(df['close'], timeperiod=14)
+        rsi = RSIIndicator(close=df['close'], window=14)
+        df['rsi_14'] = rsi.rsi()
     df['rsi_overbought'] = (df['rsi_14'] > 70).astype(int)
     df['rsi_oversold'] = (df['rsi_14'] < 30).astype(int)
     # Momentum respecto a rolling max/min
@@ -52,15 +60,14 @@ def add_advanced_volatility_features(df):
     df['vol_of_vol_20'] = df['volatility_20'].rolling(20).std()
     # Señales booleanas: ATR y BB width en percentil alto/bajo
     if 'atr_14' not in df.columns:
-        import talib
-        df['atr_14'] = talib.ATR(df['high'], df['low'], df['close'], timeperiod=14)
+        atr = AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
+        df['atr_14'] = atr.average_true_range()
     df['atr_14_percentile_20'] = df['atr_14'].rolling(20).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     df['atr_14_high'] = (df['atr_14_percentile_20'] > 0.9).astype(int)
     df['atr_14_low'] = (df['atr_14_percentile_20'] < 0.1).astype(int)
     if 'bb_width_20' not in df.columns:
-        import talib
-        upper, middle, lower = talib.BBANDS(df['close'], timeperiod=20)
-        df['bb_width_20'] = (upper - lower) / middle
+        bb = BollingerBands(close=df['close'], window=20, window_dev=2)
+        df['bb_width_20'] = (bb.bollinger_hband() - bb.bollinger_lband()) / bb.bollinger_mavg()
     df['bb_width_20_percentile'] = df['bb_width_20'].rolling(20).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     df['bb_width_20_high'] = (df['bb_width_20_percentile'] > 0.9).astype(int)
     df['bb_width_20_low'] = (df['bb_width_20_percentile'] < 0.1).astype(int)
@@ -174,11 +181,6 @@ def add_advanced_cross_features(df):
         df['macd_times_vol_roc'] = 0
         print("Advertencia: macd o volume no existen, macd_times_vol_roc se rellena con 0.")
     safe_cross('ema20_over_ema50', 'ema_20', 'ema_50', 'div')
-    if 'ema_20' in df.columns and 'close' in df.columns and 'return_5' in df.columns:
-        df['ema_vs_fut_return5'] = (df['ema_20'] - df['close']) * df['return_5'].shift(-5)
-    else:
-        df['ema_vs_fut_return5'] = 0
-        print("Advertencia: ema_20, close o return_5 no existen, ema_vs_fut_return5 se rellena con 0.")
     # C. Señales condicionales/lógicas
     if 'rsi_14' in df.columns and 'volume' in df.columns:
         df['rsi_overbought_spike'] = ((df['rsi_14'] > 70) & (df['volume'] > df['volume'].rolling(20).mean())).astype(int)
@@ -235,7 +237,7 @@ def add_advanced_cross_features(df):
         print("Advertencia: vol_jump no existe, vol_jump_lag1 y vol_jump_lag2 se rellenan con 0.")
     # Manejo de NaN/inf
     cruzados = [col for col in df.columns if col in [
-        'return10_over_vol50','return1_over_atr14','atr14_times_vol','macd_times_vol_roc','ema20_over_ema50','ema_vs_fut_return5',
+        'return10_over_vol50','return1_over_atr14','atr14_times_vol','macd_times_vol_roc','ema20_over_ema50',
         'rsi_overbought_spike','volatility_and_bullish','body_return1','wick_to_body_ratio','rsi_norm_by_atr','vol_jump','vol_jump_flag',
         'return1_times_vol_jump','body_return5_mean','vol_jump_lag1','vol_jump_lag2']]
     df[cruzados] = df[cruzados].replace([np.inf, -np.inf], np.nan).fillna(0)
@@ -501,17 +503,71 @@ class MLFeaturePipeline:
         df['above_sma_200'] = (df['close'] > df['sma_200']).astype(int) if 'sma_200' in df.columns else 0
         return df
     
-    def generate_target_variable(self, df, future_bars=10, threshold=0.01):
-        """Genera la variable objetivo basada en un movimiento real configurable"""
-        print(f"Generando target: movimiento > {threshold*100:.2f}% en {future_bars} barras...")
+    def generate_target_variable(self, df, future_bars=10, threshold=0.01, target_type='long'):
+        """Genera la variable objetivo basada en un movimiento real configurable y tipo de target"""
+        print(f"Generando target '{target_type}': movimiento {'>' if target_type=='long' else '<'} {threshold*100:.2f}% en {future_bars} barras...")
         df['future_return'] = df['close'].shift(-future_bars) / df['close'] - 1
-        df['target'] = (df['future_return'] > threshold).astype(int)
+        if target_type == 'long':
+            df['target'] = (df['future_return'] > threshold).astype(int)
+        elif target_type == 'short':
+            df['target'] = (df['future_return'] < -threshold).astype(int)
+        else:
+            raise ValueError("target_type debe ser 'long' o 'short'")
         df = df[:-future_bars]
         target_distribution = df['target'].value_counts()
         print(f"Distribución del target:\n{target_distribution}")
         print(f"Ratio positivo: {target_distribution.get(1,0) / len(df):.2%}")
         return df
-    
+
+    def feature_engineering_conditional(self, df, target_type='long'):
+        """Feature engineering condicional según el tipo de target (long/short)"""
+        print(f"Aplicando feature engineering para target: {target_type}")
+        # Features comunes
+        df = self.generate_technical_features(df)
+        df = self.generate_momentum_features(df)
+        df = add_advanced_momentum_features(df)
+        df = self.generate_volatility_features(df)
+        df = add_advanced_volatility_features(df)
+        df = add_cross_features(df, clip_value=1e6, dropna=False, verbose=True)
+        df = add_advanced_cross_features(df)
+        df = add_anti_fallo_features(df)
+        # Features exclusivos para long
+        if target_type == 'long':
+            df['bullish_momentum'] = (df['macd'] > 0).astype(int)
+            df['rsi_above_60'] = (df['rsi_14'] > 60).astype(int)
+            df['ema_cross_long'] = (df.get('ema_12', pd.Series([0]*len(df), index=df.index)) > df.get('ema_26', pd.Series([0]*len(df), index=df.index))).astype(int)
+            df['vol_up_on_green'] = ((df['close'] > df['open']) & (df['volume'] > df['volume'].rolling(10).mean())).astype(int)
+            df['bullish_engulfing'] = (df['engulfing'] > 0).astype(int) if 'engulfing' in df.columns else pd.Series([0]*len(df), index=df.index)
+            # Streaks positivos
+            df['green_streak'] = (df['close'] > df['open']).astype(int).groupby((df['close'] <= df['open']).astype(int).cumsum()).cumsum()
+            # Distancia a soporte
+            if 'low_20' in df.columns:
+                df['dist_to_support'] = (df['close'] - df['low_20']) / df['close']
+            # Baja volatilidad antes de breakout
+            if 'volatility_20' in df.columns:
+                df['low_volatility'] = (df['volatility_20'] < df['volatility_20'].rolling(20).mean()).astype(int)
+        # Features exclusivos para short
+        if target_type == 'short':
+            df['bearish_momentum'] = (df['macd'] < 0).astype(int)
+            df['rsi_below_40'] = (df['rsi_14'] < 40).astype(int)
+            df['ema_cross_short'] = (df.get('ema_12', pd.Series([0]*len(df), index=df.index)) < df.get('ema_26', pd.Series([0]*len(df), index=df.index))).astype(int)
+            df['vol_up_on_red'] = ((df['close'] < df['open']) & (df['volume'] > df['volume'].rolling(10).mean())).astype(int)
+            df['bearish_engulfing'] = (df['engulfing'] < 0).astype(int) if 'engulfing' in df.columns else pd.Series([0]*len(df), index=df.index)
+            # Streaks negativos
+            df['red_streak'] = (df['close'] < df['open']).astype(int).groupby((df['close'] >= df['open']).astype(int).cumsum()).cumsum()
+            # Distancia a resistencia
+            if 'high_20' in df.columns:
+                df['dist_to_resistance'] = (df['high_20'] - df['close']) / df['close']
+            # Alta volatilidad en caídas
+            if 'volatility_20' in df.columns:
+                df['high_volatility'] = (df['volatility_20'] > df['volatility_20'].rolling(20).mean()).astype(int)
+        # Features avanzados comunes
+        df = self.generate_pattern_features(df)
+        df = self.generate_market_structure_features(df)
+        df = self.generate_temporal_features(df)
+        df = self.generate_contextual_features(df)
+        return df
+
     def create_lag_features(self, df, lag_periods=[1, 2, 3, 5, 10]):
         """Crea features con lag temporal"""
         print("Creando features con lag temporal...")
@@ -527,11 +583,14 @@ class MLFeaturePipeline:
         return df
     
     def clean_and_scale_features(self, df):
-        """Limpia y escala las features"""
+        """Limpia y escala las features..."""
         print("Limpiando y escalando features...")
         
-        # Identificar columnas de features (excluir target y metadatos)
-        exclude_cols = ['target', 'future_max', 'datetime', 'timestamp', 'open_time', 'open', 'high', 'low', 'close', 'volume']
+        # Identificar columnas de features (excluir target y metadatos y cualquier feature con datos futuros)
+        exclude_cols = [
+            'target', 'future_return', 'future_max', 'ema_vs_fut_return5',
+            'datetime', 'timestamp', 'open_time', 'open', 'high', 'low', 'close', 'volume'
+        ]
         feature_cols = [col for col in df.columns if col not in exclude_cols]
         
         # Reemplazar infinitos y NaN
@@ -552,40 +611,54 @@ class MLFeaturePipeline:
         
         return df
     
-    def generate_complete_dataset(self, file_path, output_path='btcusdt_ml_dataset.csv', thresholds=[0.01], windows=[10]):
-        """Pipeline completo de generación de dataset para grid de targets"""
-        print("=== INICIANDO PIPELINE DE FEATURES ML ===")
+    def generate_complete_dataset(self, file_path, output_path='ml_dataset.csv', threshold=0.01, window=10, target_type='long'):
+        """Pipeline completo para un solo target (long o short) con lógica condicional de features"""
+        print(f"=== INICIANDO PIPELINE DE FEATURES ML para target: {target_type} ===")
         df = self.load_and_prepare_data(file_path)
-        df = self.generate_technical_features(df)
-        df = self.generate_momentum_features(df)
-        df = add_advanced_momentum_features(df)
-        df = self.generate_volatility_features(df)
-        df = add_advanced_volatility_features(df)
-        df = add_cross_features(df, clip_value=1e6, dropna=False, verbose=True)
-        df = add_advanced_cross_features(df)
-        df = add_anti_fallo_features(df)
-        # Selección automática de features cruzados relevantes
-        if 'target' in df.columns:
-            df, selected_cross = select_important_cross_features(df, target='target', importance_threshold=0.005, verbose=True)
-        # === INTEGRACIÓN DE FEATURES AVANZADOS ===
-        df = self.generate_pattern_features(df)
-        df = self.generate_market_structure_features(df)
-        df = self.generate_temporal_features(df)
-        df = self.generate_contextual_features(df)
-        df_all = df.copy()
-        for thr in thresholds:
-            for win in windows:
-                print(f"\n--- Generando dataset para threshold={thr}, window={win} ---")
-                df = df_all.copy()
-                df = self.create_lag_features(df)
-                df = self.generate_target_variable(df, future_bars=win, threshold=thr)
-                df = self.clean_and_scale_features(df)
-                out_name = output_path.replace('.csv', f'_win{win}_thr{int(thr*10000)}.csv')
-                df.to_csv(out_name, index=False)
-                print(f"Dataset guardado en: {out_name}")
-                print(f"Shape final: {df.shape}")
-                print(f"Distribución target: {df['target'].value_counts().to_dict()}")
-                print(f"Ratio positivo: {df['target'].mean():.2%}")
+        df = self.feature_engineering_conditional(df, target_type=target_type)
+        df = self.create_lag_features(df)
+        df = self.generate_target_variable(df, future_bars=window, threshold=threshold, target_type=target_type)
+        df = self.clean_and_scale_features(df)
+        # --- Agregar columna 'position' ---
+        if target_type == 'long':
+            df['position'] = df['target']
+        elif target_type == 'short':
+            df['position'] = -df['target']
+        else:
+            df['position'] = 0
+        df.to_csv(output_path, index=False)
+        print(f"Dataset guardado en: {output_path}")
+        print(f"Shape final: {df.shape}")
+        print(f"Distribución target: {df['target'].value_counts().to_dict()}")
+        print(f"Ratio positivo: {df['target'].mean():.2%}")
+        return None
+
+    def generate_combined_dataset(self, file_path, output_path='ml_dataset_combined.csv', window_long=10, threshold_long=0.01, window_short=10, threshold_short=0.01):
+        """Genera un dataset combinado con targets y posiciones long/short para análisis de portafolio."""
+        print(f"=== INICIANDO PIPELINE DE FEATURES ML COMBINADO (LONG+SHORT) ===")
+        df = self.load_and_prepare_data(file_path)
+        # Features comunes
+        df = self.feature_engineering_conditional(df, target_type='long')  # Usa lógica long para features, puedes ajustar si quieres lógica mixta
+        df = self.create_lag_features(df)
+        # Targets
+        df['future_return_long'] = df['close'].shift(-window_long) / df['close'] - 1
+        df['future_return_short'] = df['close'].shift(-window_short) / df['close'] - 1
+        df['target_long'] = (df['future_return_long'] > threshold_long).astype(int)
+        df['target_short'] = (df['future_return_short'] < -threshold_short).astype(int)
+        # Recorta para evitar lookahead
+        min_bars = max(window_long, window_short)
+        df = df[:-min_bars]
+        # Posiciones
+        df['position_long'] = df['target_long']
+        df['position_short'] = -df['target_short']
+        df['position'] = df['position_long'] + df['position_short']
+        # Limpieza y escalado
+        df = self.clean_and_scale_features(df)
+        df.to_csv(output_path, index=False)
+        print(f"Dataset combinado guardado en: {output_path}")
+        print(f"Shape final: {df.shape}")
+        print(f"Distribución target_long: {df['target_long'].value_counts().to_dict()}")
+        print(f"Distribución target_short: {df['target_short'].value_counts().to_dict()}")
         return None
 
 # Ejecutar pipeline

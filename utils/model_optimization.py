@@ -15,6 +15,7 @@ import joblib
 from pathlib import Path
 import json
 from datetime import datetime
+from sklearn.model_selection import StratifiedKFold
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class ModelOptimizer:
         return X[selected_features], selected_features
     
     def optimize_hyperparameters(self, X: pd.DataFrame, y: pd.Series) -> Dict:
-        """Optimize model hyperparameters using Optuna."""
+        """Optimize model hyperparameters and threshold using Optuna."""
         def objective(trial):
             params = {
                 'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
@@ -60,24 +61,37 @@ class ModelOptimizer:
                 'reg_alpha': trial.suggest_float('reg_alpha', 0, 1),
                 'reg_lambda': trial.suggest_float('reg_lambda', 0, 1)
             }
-            
-            model = xgb.XGBClassifier(**params)
-            scores = cross_val_score(
-                model, X, y,
-                cv=self.cv_folds,
-                scoring='f1',
-                n_jobs=-1
-            )
-            return scores.mean()
-        
+            skf = StratifiedKFold(n_splits=self.cv_folds, shuffle=True, random_state=42)
+            f1_scores = []
+            thresholds = []
+            for train_idx, valid_idx in skf.split(X, y):
+                X_train, X_valid = X.iloc[train_idx], X.iloc[valid_idx]
+                y_train, y_valid = y.iloc[train_idx], y.iloc[valid_idx]
+                model = xgb.XGBClassifier(**params, use_label_encoder=False, eval_metric='logloss')
+                model.fit(X_train, y_train)
+                y_proba = model.predict_proba(X_valid)[:, 1]
+                best_f1 = 0
+                best_thr = 0.5
+                for thr in np.arange(0.1, 0.91, 0.01):
+                    y_pred = (y_proba > thr).astype(int)
+                    f1 = f1_score(y_valid, y_pred)
+                    if f1 > best_f1:
+                        best_f1 = f1
+                        best_thr = thr
+                f1_scores.append(best_f1)
+                thresholds.append(best_thr)
+            avg_f1 = np.mean(f1_scores)
+            avg_thr = float(np.mean(thresholds))
+            trial.set_user_attr("best_threshold", avg_thr)
+            return avg_f1
         study = optuna.create_study(direction='maximize')
         study.optimize(objective, n_trials=self.n_trials)
-        
         logger.info(f"Best trial: score={study.best_value:.4f}")
         for key, value in study.best_params.items():
             logger.info(f"    {key}: {value}")
-        
-        return study.best_params
+        best_threshold = study.best_trial.user_attrs.get("best_threshold", 0.5)
+        best_params = study.best_params
+        return {"best_params": best_params, "best_threshold": best_threshold}
     
     def evaluate_model_drift(
         self,

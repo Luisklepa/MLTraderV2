@@ -160,4 +160,76 @@ def add_all_statistical_features(
     # Add entropy features
     result = add_entropy_features(result, window=20)
     
-    return result 
+    return result
+
+def calculate_returns(df: pd.DataFrame, windows: List[int]) -> Dict[str, pd.Series]:
+    """Calculate returns over multiple windows."""
+    returns = {}
+    for window in windows:
+        returns[f'return_{window}'] = df['close'].pct_change(window)
+    return returns
+
+def calculate_volatility(df: pd.DataFrame, windows: List[int]) -> Dict[str, pd.Series]:
+    """Calculate realized volatility over multiple windows."""
+    returns = df['close'].pct_change()
+    volatility = {}
+    for window in windows:
+        volatility[f'volatility_{window}'] = returns.rolling(window).std() * np.sqrt(252)
+    return volatility
+
+def calculate_zscore(series: pd.Series, window: int) -> pd.Series:
+    """Calculate rolling z-score."""
+    mean = series.rolling(window).mean()
+    std = series.rolling(window).std()
+    return (series - mean) / std
+
+def calculate_efficiency_ratio(prices: pd.Series, window: int) -> pd.Series:
+    """Calculate price efficiency ratio."""
+    direction = abs(prices - prices.shift(window))
+    volatility = abs(prices - prices.shift(1)).rolling(window).sum()
+    return direction / volatility
+
+def calculate_rsi_divergence(df: pd.DataFrame, window: int = 14) -> pd.Series:
+    """Calculate RSI divergence."""
+    # Calculate RSI
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    # Calculate price and RSI slopes
+    price_slope = df['close'].diff(window)
+    rsi_slope = rsi.diff(window)
+    
+    # Identify divergences
+    bullish_div = (price_slope < 0) & (rsi_slope > 0)
+    bearish_div = (price_slope > 0) & (rsi_slope < 0)
+    
+    return pd.Series(0, index=df.index).where(~(bullish_div | bearish_div), 
+                                            np.where(bullish_div, 1, -1))
+
+def add_statistical_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add all statistical features to the dataframe."""
+    # Returns
+    returns = calculate_returns(df, windows=[1, 5, 10])
+    for name, series in returns.items():
+        df[name] = series
+    
+    # Volatility
+    volatility = calculate_volatility(df, windows=[10, 20])
+    for name, series in volatility.items():
+        df[name] = series
+    
+    # Z-scores
+    df['zscore_close_20'] = calculate_zscore(df['close'], 20)
+    df['zscore_volume_20'] = calculate_zscore(df['volume'], 20)
+    df['zscore_rsi_14_20'] = calculate_zscore(df['rsi_14'], 20)
+    
+    # Efficiency ratio
+    df['efficiency_ratio'] = calculate_efficiency_ratio(df['close'], 20)
+    
+    # RSI divergence
+    df['rsi_divergence'] = calculate_rsi_divergence(df)
+    
+    return df 

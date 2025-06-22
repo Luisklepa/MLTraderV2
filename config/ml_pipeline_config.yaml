@@ -5,43 +5,37 @@ data_config:
   timeframe: '15m'
 
 features_config:
-  # Technical indicators
-  rsi:
-    type: 'technical'
-    params:
-      window: 14
-  macd:
-    type: 'technical'
-    params:
-      fast: 12
-      slow: 26
-      signal: 9
-  stoch:
-    type: 'technical'
-    params:
-      k_window: 14
-      d_window: 3
-  atr:
-    type: 'technical'
-    params:
-      window: 14
-  bbands:
-    type: 'technical'
-    params:
-      window: 20
-      num_std: 2
-  obv:
-    type: 'technical'
-  vwap:
-    type: 'technical'
-    params:
-      window: 20
-  adx:
-    type: 'technical'
-    params:
-      window: 14
+  technical_indicators:
+    - name: rsi
+      params:
+        timeperiod: 14
+    - name: macd
+      params:
+        fastperiod: 12
+        slowperiod: 26
+        signalperiod: 9
+    - name: stoch
+      params:
+        fastk_period: 14
+        slowk_period: 3
+        slowd_period: 3
+    - name: atr
+      params:
+        timeperiod: 14
+    - name: bbands
+      params:
+        timeperiod: 20
+        nbdevup: 2
+        nbdevdn: 2
+    - name: obv
+      params: {}
+    - name: vwap
+      params:
+        window: 20
+    - name: adx
+      params:
+        timeperiod: 14
   
-  # Statistical features
   returns:
     type: 'statistical'
     params:
@@ -57,8 +51,6 @@ features_config:
     params:
       window: 20
       columns: ['close', 'volume', 'rsi_14', 'macd', 'atr_14']
-  
-  # Temporal features
   temporal:
     type: 'datetime'
     params:
@@ -70,132 +62,72 @@ features_config:
         - 'session_progress'
 
 model_config:
-  long_model:
-    model_params:
-      n_estimators: 1000
-      max_depth: 8
-      learning_rate: 0.01
-      min_child_weight: 3
-      subsample: 0.8
-      colsample_bytree: 0.8
-      gamma: 0.1
-      objective: 'binary:logistic'
-      eval_metric: ['auc', 'error']
-      scale_pos_weight: 1.5
-      early_stopping_rounds: 50
-      reg_alpha: 0.05
-      reg_lambda: 0.5
-    threshold: 0.40
-    min_probability: 0.45
+  ensemble:
+    models:
+      - name: long
+        params:
+          n_estimators: 1000
+          max_depth: 4
+          learning_rate: 0.01
+          min_child_weight: 5
+          subsample: 0.8
+          colsample_bytree: 0.8
+          gamma: 0.2
+          objective: 'binary:logistic'
+          eval_metric: ['auc', 'error']
+          scale_pos_weight: 5.0
+          early_stopping_rounds: 50
+          reg_alpha: 0.1
+          reg_lambda: 1.0
+      - name: short
+        params:
+          n_estimators: 1000
+          max_depth: 4
+          learning_rate: 0.01
+          min_child_weight: 5
+          subsample: 0.8
+          colsample_bytree: 0.8
+          gamma: 0.2
+          objective: 'binary:logistic'
+          eval_metric: ['auc', 'error']
+          scale_pos_weight: 5.0
+          early_stopping_rounds: 50
+          reg_alpha: 0.1
+          reg_lambda: 1.0
+    threshold: 0.7
+    min_probability: 0.75
     use_smote: true
     class_weight: 'balanced'
     position_sizing:
       base_size: 1.0
-      confidence_multiplier: 0.5
-      max_size: 2.0
+      confidence_multiplier: 0.75
+      max_size: 1.5
       volatility_adjustment: true
-    risk_management:
-      max_drawdown: 0.02
-      stop_loss: 0.015
-      take_profit: 0.03
-      trailing_stop: true
-      trailing_stop_distance: 0.008
-      max_holding_periods: 48
-      profit_taking_adjustment: true
-  
-  short_model:
-    model_params:
-      n_estimators: 1000
-      max_depth: 8
-      learning_rate: 0.01
-      min_child_weight: 3
-      subsample: 0.8
-      colsample_bytree: 0.8
-      gamma: 0.1
-      objective: 'binary:logistic'
-      eval_metric: ['auc', 'error']
-      scale_pos_weight: 1.5
-      early_stopping_rounds: 50
-      reg_alpha: 0.05
-      reg_lambda: 0.5
-    threshold: 0.40
-    min_probability: 0.45
-    use_smote: true
-    class_weight: 'balanced'
-    position_sizing:
-      base_size: 1.0
-      confidence_multiplier: 0.5
-      max_size: 2.0
-      volatility_adjustment: true
-    risk_management:
-      max_drawdown: 0.02
-      stop_loss: 0.015
-      take_profit: 0.03
-      trailing_stop: true
-      trailing_stop_distance: 0.008
-      max_holding_periods: 48
-      profit_taking_adjustment: true
-  
   selected_features:
-    # Base features
-    - 'hour'
-    - 'weekday'
-    - 'month'
-    - 'is_weekend'
-    - 'session_progress'
-    # Technical indicators
-    - 'rsi_14'
-    - 'macd'
-    - 'macd_signal'
-    - 'macd_histogram'
-    - 'stoch_k'
-    - 'stoch_d'
+    # Volatility Features
     - 'atr_14'
-    - 'bb_upper'
-    - 'bb_middle'
-    - 'bb_lower'
-    - 'bb_breakout'
-    - 'obv'
-    - 'vwap'
-    - 'vwap_distance'
-    # Market Regime Features
-    - 'ema_20'
-    - 'ema_50'
-    - 'ema_200'
-    - 'price_ema_20_ratio'
-    - 'price_ema_50_ratio'
-    - 'price_ema_200_ratio'
+    - 'volatility_10'
+    - 'volatility_ratio'
+    # Trend Features
     - 'trend_strength'
     - 'trend_direction'
-    - 'volatility_regime'
-    - 'volatility_ratio'
+    - 'bb_breakout'
+    # Volume Features
     - 'volume_ratio'
+    - 'volume_trend'
     - 'volume_trend_confirm'
-    - 'rsi_divergence'
-    - 'efficiency_ratio'
-    - 'zscore_price'
-    - 'trend_exhaustion'
-    # Pattern Recognition
-    - 'pattern_3blackcrows'
-    - 'pattern_3whitesoldiers'
-    - 'pattern_engulfing'
-    - 'pattern_harami'
-    - 'pattern_morningstar'
-    - 'pattern_eveningstar'
-    # Support/Resistance
-    - 'price_to_support'
-    - 'price_to_resistance'
-    # Returns and volatility
+    # Momentum Features
+    - 'rsi_14'
+    - 'macd_histogram'
+    - 'stoch_k'
+    # Price Action Features
+    - 'vwap_distance'
     - 'return_1'
     - 'return_5'
     - 'return_10'
-    - 'return_20'
-    - 'volatility_10'
-    - 'volatility_20'
-    - 'volatility_50'
-    # Z-scores
-    - 'zscore_close_20'
+    # Statistical Features
     - 'zscore_volume_20'
-    - 'zscore_rsi_14_20'
-    - 'zscore_macd_20'
-    - 'zscore_atr_14_20' 
+    - 'zscore_rsi_14_20' 
+  prediction:
+    threshold: 0.7
+    min_prediction_confidence: 0.75 

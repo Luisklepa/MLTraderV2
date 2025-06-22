@@ -1,22 +1,19 @@
 import sys
 from pathlib import Path
-from typing import Dict
+import pandas as pd
+import numpy as np
+import logging
+import yaml
+import json
+from datetime import datetime
+import matplotlib.pyplot as plt
 
 # Add project root to Python path
 project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-import pandas as pd
-import numpy as np
-import logging
 from utils.ml_pipeline import MLPipeline, PipelineConfig
-from utils.data_feed import load_data
-import yaml
-import json
-from datetime import datetime
-import traceback
-import matplotlib.pyplot as plt
 
 def setup_logging(output_dir: Path) -> logging.Logger:
     """Setup logging configuration."""
@@ -46,18 +43,29 @@ def setup_logging(output_dir: Path) -> logging.Logger:
 
 def load_data(file_path: str) -> pd.DataFrame:
     """Load and preprocess data."""
-    # Load data
-    df = pd.read_csv(file_path)
+    print("Loading data...")
+    
+    # Load data with explicit dtypes
+    dtype_dict = {
+        'open': np.float64,
+        'high': np.float64,
+        'low': np.float64,
+        'close': np.float64,
+        'volume': np.float64
+    }
+    
+    df = pd.read_csv(file_path, dtype=dtype_dict)
     
     # Convert timestamp column
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df.set_index('timestamp', inplace=True)
-    
-    # Ensure required columns exist
-    required_columns = ['open', 'high', 'low', 'close', 'volume']
-    missing_columns = [col for col in required_columns if col not in df.columns]
-    if missing_columns:
-        raise ValueError(f"Missing required columns: {missing_columns}")
+    if 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True)
+    elif 'date' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['date'])
+        df.set_index('timestamp', inplace=True)
+        df.drop('date', axis=1, inplace=True, errors='ignore')
+    else:
+        raise ValueError("DataFrame must have a timestamp or date column")
     
     # Sort by datetime
     df.sort_index(inplace=True)
@@ -66,15 +74,17 @@ def load_data(file_path: str) -> pd.DataFrame:
     df = df[~df.index.duplicated(keep='first')]
     
     # Forward fill missing values
-    df.fillna(method='ffill', inplace=True)
+    df = df.ffill()
+    
+    print("\nData shape:", df.shape)
+    print("\nSample data:")
+    print(df.head())
     
     return df
 
-def save_results(results: Dict):
+def save_results(results: dict, output_dir: Path):
     """Save results to files."""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir = Path('ml_pipeline_results')
-    output_dir.mkdir(exist_ok=True)
     
     # Save metrics
     metrics_file = output_dir / f'metrics_{timestamp}.json'
@@ -91,12 +101,14 @@ def save_results(results: Dict):
     # Save predictions
     predictions_file = output_dir / f'predictions_{timestamp}.csv'
     results['test_predictions'].to_csv(predictions_file)
+    
+    print(f"\nResults saved to {output_dir}")
 
-def generate_analysis_plots(results: Dict):
+def generate_plots(results: dict, output_dir: Path):
     """Generate analysis plots."""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir = Path('ml_pipeline_results/plots')
-    output_dir.mkdir(exist_ok=True, parents=True)
+    plots_dir = output_dir / 'plots'
+    plots_dir.mkdir(exist_ok=True)
     
     # Plot feature importance
     plt.figure(figsize=(12, 6))
@@ -106,145 +118,75 @@ def generate_analysis_plots(results: Dict):
     importance.tail(20)['mean_importance'].plot(kind='barh')
     plt.title('Top 20 Features by Importance')
     plt.tight_layout()
-    plt.savefig(output_dir / f'feature_importance_{timestamp}.png')
+    plt.savefig(plots_dir / f'feature_importance_{timestamp}.png')
     plt.close()
     
     # Plot prediction distribution
     plt.figure(figsize=(12, 6))
     preds = results['test_predictions']
-    plt.hist(preds['position'], bins=50, alpha=0.5, label='Position Size')
-    plt.title('Distribution of Position Sizes')
-    plt.xlabel('Position Size')
+    for side in ['long', 'short']:
+        plt.hist(
+            preds[f'{side}_prob'],
+            bins=50,
+            alpha=0.5,
+            label=f'{side.capitalize()} Probability'
+        )
+    plt.title('Distribution of Prediction Probabilities')
+    plt.xlabel('Probability')
     plt.ylabel('Frequency')
     plt.legend()
     plt.tight_layout()
-    plt.savefig(output_dir / f'prediction_dist_{timestamp}.png')
+    plt.savefig(plots_dir / f'prediction_dist_{timestamp}.png')
     plt.close()
 
-def print_metrics(results: Dict):
-    """Print detailed model metrics and analysis."""
-    print("\nModel Performance Metrics:")
-    print("=" * 80)
-    
-    # Print long model metrics
-    print("\nLong Model Metrics:")
-    print("-" * 40)
-    metrics = results['long_metrics']
-    print(f"Classification Metrics:")
-    print(f"  Accuracy: {metrics['accuracy']:.4f}")
-    print(f"  Balanced Accuracy: {metrics['balanced_accuracy']:.4f}")
-    print(f"  ROC-AUC: {metrics['roc_auc']:.4f}")
-    print(f"  Precision: {metrics['precision']:.4f}")
-    print(f"  Recall: {metrics['recall']:.4f}")
-    print(f"  F1-score: {metrics['f1']:.4f}")
-    print(f"\nConfusion Matrix:")
-    print(f"  True Positives: {metrics['true_positive']}")
-    print(f"  False Positives: {metrics['false_positive']}")
-    print(f"  True Negatives: {metrics['true_negative']}")
-    print(f"  False Negatives: {metrics['false_negative']}")
-    print(f"  Specificity: {metrics['specificity']:.4f}")
-    
-    # Print short model metrics
-    print("\nShort Model Metrics:")
-    print("-" * 40)
-    metrics = results['short_metrics']
-    print(f"Classification Metrics:")
-    print(f"  Accuracy: {metrics['accuracy']:.4f}")
-    print(f"  Balanced Accuracy: {metrics['balanced_accuracy']:.4f}")
-    print(f"  ROC-AUC: {metrics['roc_auc']:.4f}")
-    print(f"  Precision: {metrics['precision']:.4f}")
-    print(f"  Recall: {metrics['recall']:.4f}")
-    print(f"  F1-score: {metrics['f1']:.4f}")
-    print(f"\nConfusion Matrix:")
-    print(f"  True Positives: {metrics['true_positive']}")
-    print(f"  False Positives: {metrics['false_positive']}")
-    print(f"  True Negatives: {metrics['true_negative']}")
-    print(f"  False Negatives: {metrics['false_negative']}")
-    print(f"  Specificity: {metrics['specificity']:.4f}")
-    
-    # Print feature importance
-    print("\nTop 20 Features by Importance:")
-    print("-" * 80)
-    importance = results['feature_importance']
-    importance['mean_importance'] = importance.mean(axis=1)
-    importance['std_importance'] = importance.std(axis=1)
-    importance = importance.sort_values('mean_importance', ascending=False)
-    
-    print("\nRank  Feature                  Mean Imp.   Std Dev    Long Imp.  Short Imp.")
-    print("-" * 80)
-    for i, (feature, row) in enumerate(importance.head(20).iterrows(), 1):
-        print(f"{i:4d}  {feature:22s}  {row['mean_importance']:9.4f}  {row['std_importance']:9.4f}  {row['long_importance']:9.4f}  {row['short_importance']:9.4f}")
-    
-    # Print prediction and position statistics
-    print("\nPrediction Statistics:")
-    print("-" * 80)
-    preds = results['test_predictions']
-    print(f"Total Predictions: {len(preds)}")
-    
-    # Long positions
-    long_positions = preds[preds['position'] > 0]
-    print("\nLong Positions:")
-    print(f"  Count: {len(long_positions)} ({len(long_positions)/len(preds):.2%})")
-    if len(long_positions) > 0:
-        print(f"  Average Size: {long_positions['position'].mean():.4f}")
-        print(f"  Max Size: {long_positions['position'].max():.4f}")
-        print(f"  Min Size: {long_positions['position'].min():.4f}")
-        print(f"  Average Probability: {long_positions['long_prob'].mean():.4f}")
-    
-    # Short positions
-    short_positions = preds[preds['position'] < 0]
-    print("\nShort Positions:")
-    print(f"  Count: {len(short_positions)} ({len(short_positions)/len(preds):.2%})")
-    if len(short_positions) > 0:
-        print(f"  Average Size: {abs(short_positions['position']).mean():.4f}")
-        print(f"  Max Size: {abs(short_positions['position']).max():.4f}")
-        print(f"  Min Size: {abs(short_positions['position']).min():.4f}")
-        print(f"  Average Probability: {short_positions['short_prob'].mean():.4f}")
-    
-    # No positions
-    no_positions = preds[preds['position'] == 0]
-    print(f"\nNo Positions: {len(no_positions)} ({len(no_positions)/len(preds):.2%})")
-
 def main():
-    """Main function to run the ML pipeline."""
-    print("Starting ML pipeline execution...")
+    """Main execution function."""
+    import argparse
+    parser = argparse.ArgumentParser(description='Run ML pipeline')
+    parser.add_argument('--config', required=True, help='Path to config file')
+    parser.add_argument('--data-file', required=True, help='Path to data file')
+    parser.add_argument('--output-dir', default='ml_pipeline_results', help='Output directory')
+    args = parser.parse_args()
     
-    # Load configuration
-    config_path = 'config/ml_pipeline_config.yaml'
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    # Initialize pipeline
-    pipeline = MLPipeline(config)
-    
-    # Load data
-    data = load_data('data/btcusdt_prices.csv')
-    print(f"Loaded {len(data)} rows of data")
-    
-    print("Initializing ML pipeline...")
-    print("Running ML pipeline...")
+    # Setup output directory and logging
+    output_dir = Path(args.output_dir)
+    logger = setup_logging(output_dir)
     
     try:
-        # Run pipeline
-        results = pipeline.run(data)
+        # Load configuration
+        logger.info("Loading configuration...")
+        config = PipelineConfig(args.config)
+        logger.info("Configuration loaded successfully")
         
-        # Print results
-        print_metrics(results)
+        # Load data
+        logger.info("Loading data...")
+        df = load_data(args.data_file)
+        logger.info(f"Data loaded successfully. Shape: {df.shape}")
+        
+        # Initialize and run pipeline
+        logger.info("Initializing pipeline...")
+        pipeline = MLPipeline(config)
+        logger.info("Pipeline initialized successfully")
+        
+        logger.info("Running pipeline...")
+        results = pipeline.train(df)
+        logger.info("Pipeline completed successfully")
         
         # Save results
-        print("\nSaving results...")
-        save_results(results)
+        logger.info("Saving results...")
+        save_results(results, output_dir)
         
         # Generate plots
-        print("Generating analysis plots...")
-        generate_analysis_plots(results)
+        logger.info("Generating plots...")
+        generate_plots(results, output_dir)
         
-        print("\nPipeline execution completed successfully!")
+        logger.info("Pipeline execution completed successfully")
         
     except Exception as e:
-        print(f"Pipeline execution failed: {str(e)}")
-        traceback.print_exc()
-        sys.exit(1)
+        logger.error(f"Error in pipeline execution: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
 
 if __name__ == '__main__':
     main() 

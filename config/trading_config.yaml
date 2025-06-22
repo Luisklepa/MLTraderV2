@@ -1,0 +1,180 @@
+# Trading System Configuration
+
+data_config:
+  base_symbol: "BTC"
+  quote_symbol: "USDT"
+  timeframe: "15m"
+  lookback_period: "90d"
+  reference_assets:
+    - "ETH/USDT"
+    - "BNB/USDT"
+    - "SOL/USDT"
+    - "ADA/USDT"
+  data_source: "binance"
+  cache_data: true
+  cache_dir: "data/cache"
+
+features_config:
+  technical_indicators:
+    - name: "atr"
+      params:
+        timeperiod: 14
+    - name: "rsi"
+      params:
+        timeperiod: 14
+    - name: "macd"
+      params:
+        fastperiod: 12
+        slowperiod: 26
+        signalperiod: 9
+    - name: "bbands"
+      params:
+        timeperiod: 20
+        nbdevup: 2
+        nbdevdn: 2
+    - name: "stoch"
+      params:
+        fastk_period: 14
+        slowk_period: 3
+        slowd_period: 3
+  
+  sentiment_analysis:
+    fear_greed_index:
+      enabled: true
+      weight: 0.3
+    news_sentiment:
+      enabled: true
+      sources:
+        - "twitter"
+        - "reddit"
+        - "crypto_news"
+      weight: 0.3
+    market_regime:
+      enabled: true
+      lookback_period: "30d"
+      weight: 0.4
+    correlation:
+      min_correlation: -0.8
+      max_correlation: 0.8
+      lookback_period: "30d"
+      rolling_window: "7d"
+
+model_config:
+  ensemble:
+    models:
+      - name: "xgboost"
+        weight: 0.4
+        params:
+          max_depth: 6
+          learning_rate: 0.1
+          n_estimators: 100
+          subsample: 0.8
+          colsample_bytree: 0.8
+      - name: "lightgbm"
+        weight: 0.3
+        params:
+          num_leaves: 31
+          learning_rate: 0.1
+          n_estimators: 100
+          subsample: 0.8
+          colsample_bytree: 0.8
+      - name: "catboost"
+        weight: 0.3
+        params:
+          depth: 6
+          learning_rate: 0.1
+          iterations: 100
+          subsample: 0.8
+  
+  training:
+    train_size: 0.7
+    val_size: 0.15
+    test_size: 0.15
+    retraining_interval: "7d"
+    early_stopping_rounds: 50
+    cv_folds: 5
+    target_metric: "f1"
+    class_weights: "balanced"
+  
+  prediction:
+    threshold: 0.6
+    weight_update_interval: "1d"
+    min_prediction_confidence: 0.7
+    ensemble_method: "weighted_average"
+
+risk_config:
+  initial_capital: 100000
+  position_sizing:
+    max_position_size: 0.25  # Maximum position size as fraction of capital
+    base_risk_per_trade: 0.02  # Base risk per trade as fraction of capital
+    volatility_scaling: true
+    correlation_adjustment: true
+    kelly_fraction: 0.5
+  
+  stop_loss:
+    enabled: true
+    type: "adaptive"  # fixed or adaptive
+    atr_multiplier: 2.0
+    max_stop_distance: 0.05
+    min_stop_distance: 0.01
+  
+  take_profit:
+    enabled: true
+    type: "adaptive"  # fixed or adaptive
+    risk_reward_ratio: 2.0
+    trailing: true
+    activation_threshold: 0.02
+  
+  filters:
+    min_volume: 1000000  # Minimum 24h volume in USD
+    min_volatility: 0.001  # Minimum volatility (ATR/price)
+    max_spread: 0.002  # Maximum allowed spread
+    trend_filter: true
+    volatility_filter: true
+  
+  portfolio:
+    max_correlation: 0.7
+    max_drawdown: 0.15
+    max_leverage: 1.0
+    position_limit: 5
+  
+  monitoring:
+    max_adverse_excursion: 0.1
+    profit_lock: 0.05
+    trailing_stop: true
+    trailing_stop_activation: 0.03
+
+reporting:
+  log_level: "INFO"
+  save_trades: true
+  plot_results: true
+  telegram_notifications:
+    enabled: true
+    bot_token: ""  # Add your bot token
+    chat_id: ""    # Add your chat ID
+  metrics:
+    - "sharpe_ratio"
+    - "sortino_ratio"
+    - "max_drawdown"
+    - "win_rate"
+    - "profit_factor"
+    - "avg_trade"
+    - "exposure_time"
+
+monitoring_config:
+  metrics:
+    - sharpe_ratio
+    - sortino_ratio
+    - max_drawdown
+    - win_rate
+    - profit_factor
+    
+  alerts:
+    drawdown_threshold: 0.1  # Alert on 10% drawdown
+    correlation_threshold: 0.8  # Alert on high correlation
+    model_degradation_threshold: 0.2  # Alert on 20% performance drop
+    
+  logging:
+    level: INFO
+    file_path: logs/trading_system.log
+    rotation: 1d  # Rotate logs daily 

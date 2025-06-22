@@ -1,11 +1,11 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, Optional, Union, List
+from typing import Dict, Optional, Union, List, Tuple, Any
 from pathlib import Path
 import logging
 import yaml
 from dataclasses import dataclass
-from sklearn.model_selection import TimeSeriesSplit
+from sklearn.model_selection import TimeSeriesSplit, train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, roc_curve, confusion_matrix, accuracy_score, balanced_accuracy_score
 from sklearn.impute import SimpleImputer
@@ -20,6 +20,8 @@ import pywt
 from scipy import stats
 from scipy.signal import find_peaks
 from statsmodels.tsa.stattools import adfuller
+from functools import lru_cache
+import numpy.lib.stride_tricks as stride_tricks
 
 from .technical_indicators import add_all_indicators
 from .statistical_features import add_all_statistical_features
@@ -27,102 +29,500 @@ from .statistical_features import add_all_statistical_features
 logger = logging.getLogger(__name__)
 
 @dataclass
-class PipelineConfig:
-    """Configuration for ML pipeline."""
-    data_config: Dict
-    features_config: Dict
-    target_config: Dict
-    model_config: Dict
+class ModelConfig:
+    """Configuration for a single model."""
+    n_estimators: int = 100
+    max_depth: int = 3
+    learning_rate: float = 0.1
+    subsample: float = 0.8
+    colsample_bytree: float = 0.8
+    min_child_weight: int = 1
+    gamma: float = 0
+    scale_pos_weight: float = 1
     
-    @classmethod
-    def from_yaml(cls, config_path: Union[str, Path]) -> 'PipelineConfig':
+    def to_dict(self) -> Dict:
+        """Convert ModelConfig to dictionary."""
+        return {
+            'n_estimators': self.n_estimators,
+            'max_depth': self.max_depth,
+            'learning_rate': self.learning_rate,
+            'subsample': self.subsample,
+            'colsample_bytree': self.colsample_bytree,
+            'min_child_weight': self.min_child_weight,
+            'gamma': self.gamma,
+            'scale_pos_weight': self.scale_pos_weight
+        }
+
+class PipelineConfig:
+    """Configuration class for ML pipeline."""
+    
+    def __init__(self, config_path: str):
         """Load configuration from YAML file."""
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-        return cls(**config)
+        print("[DEBUG] Contenido del YAML cargado:")
+        print(config)
+        self.model_config = config['model_config']
+        self.features_config = config['features_config']
+        self.data_config = config['data_config']
+        
+    @property
+    def long_params(self) -> Dict[str, Any]:
+        """Get long model parameters."""
+        return self.model_config['ensemble']['models'][0]['params']
+        
+    @property
+    def short_params(self) -> Dict[str, Any]:
+        """Get short model parameters."""
+        return self.model_config['ensemble']['models'][0]['params']
+        
+    @property
+    def selected_features(self) -> list:
+        """Get list of selected features."""
+        features = []
+        
+        # Add technical indicators
+        for indicator in self.features_config['technical_indicators']:
+            features.append(indicator['name'])
+            
+        # Add statistical features
+        features.extend([
+            'returns_1',
+            'returns_5',
+            'returns_10',
+            'volatility_10',
+            'volatility_20',
+            'zscore_close_20',
+            'zscore_volume_20'
+        ])
+        
+        # Add temporal features
+        features.extend([
+            'hour',
+            'weekday',
+            'month',
+            'is_weekend',
+            'session_progress'
+        ])
+        
+        return features
+        
+    @property
+    def use_smote(self) -> bool:
+        """Get SMOTE configuration."""
+        return True
+        
+    @property
+    def threshold(self) -> float:
+        """Get prediction threshold."""
+        return self.model_config['prediction']['threshold']
+        
+    @property
+    def min_prediction_confidence(self) -> float:
+        """Get minimum prediction confidence."""
+        return self.model_config['prediction']['min_prediction_confidence']
 
 class MLPipeline:
-    """ML pipeline for trading signal generation."""
+    """ML pipeline for training and prediction."""
     
     def __init__(self, config: PipelineConfig):
         """Initialize pipeline with configuration."""
         self.config = config
-        self.scaler = StandardScaler()
-        self.imputer = SimpleImputer(strategy='median')
-        self.long_model = None
-        self.short_model = None
-        self.feature_names = None
-    
-    def calculate_advanced_features(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Calculate advanced technical features."""
+        self.logger = logging.getLogger(__name__)
+        self.models = {'long': None, 'short': None}
+        self.scalers = {'long': StandardScaler(), 'short': StandardScaler()}
+        
+    def prepare_features(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Prepare features for prediction."""
         df = data.copy()
         
-        # Market Regime Features
-        # 1. Trend Analysis
-        df['ema_20'] = talib.EMA(df['close'], timeperiod=20)
-        df['ema_50'] = talib.EMA(df['close'], timeperiod=50)
-        df['ema_200'] = talib.EMA(df['close'], timeperiod=200)
-        df['price_ema_20_ratio'] = df['close'] / df['ema_20']
-        df['price_ema_50_ratio'] = df['close'] / df['ema_50']
-        df['price_ema_200_ratio'] = df['close'] / df['ema_200']
+        # Add technical indicators
+        for indicator in self.config.features_config['technical_indicators']:
+            name = indicator['name']
+            params = indicator.get('params', {})
+            
+            if name == 'rsi':
+                df[f'rsi_{params["timeperiod"]}'] = talib.RSI(df['close'], timeperiod=params['timeperiod'])
+            elif name == 'macd':
+                macd, signal, hist = talib.MACD(
+                    df['close'],
+                    fastperiod=params['fastperiod'],
+                    slowperiod=params['slowperiod'],
+                    signalperiod=params['signalperiod']
+                )
+                df['macd'] = macd
+                df['macd_signal'] = signal
+                df['macd_hist'] = hist
+            elif name == 'bbands':
+                upper, middle, lower = talib.BBANDS(
+                    df['close'],
+                    timeperiod=params['timeperiod'],
+                    nbdevup=params['nbdevup'],
+                    nbdevdn=params['nbdevdn']
+                )
+                df['bb_upper'] = upper
+                df['bb_middle'] = middle
+                df['bb_lower'] = lower
+            elif name == 'atr':
+                df[f'atr_{params["timeperiod"]}'] = talib.ATR(
+                    df['high'],
+                    df['low'],
+                    df['close'],
+                    timeperiod=params['timeperiod']
+                )
+            elif name == 'stoch':
+                slowk, slowd = talib.STOCH(
+                    df['high'],
+                    df['low'],
+                    df['close'],
+                    fastk_period=params['fastk_period'],
+                    slowk_period=params['slowk_period'],
+                    slowd_period=params['slowd_period']
+                )
+                df['stoch_k'] = slowk
+                df['stoch_d'] = slowd
         
-        # Trend strength and direction
-        df['trend_strength'] = abs(talib.ROC(df['close'], timeperiod=20))
-        df['trend_direction'] = np.where(df['ema_20'] > df['ema_50'], 1,
-                                       np.where(df['ema_20'] < df['ema_50'], -1, 0))
+        # Add statistical features
+        df['returns_1'] = df['close'].pct_change()
+        df['returns_5'] = df['close'].pct_change(5)
+        df['returns_10'] = df['close'].pct_change(10)
         
-        # 2. Volatility Analysis
-        df['atr_14'] = talib.ATR(df['high'], df['low'], df['close'], timeperiod=14)
-        volatility = df['close'].pct_change().rolling(window=20).std()
-        volatility_sma = volatility.rolling(window=100).mean()
-        df['volatility_regime'] = np.where(volatility > volatility_sma, 1, -1)
-        df['volatility_ratio'] = volatility / volatility_sma
+        df['volatility_10'] = df['returns_1'].rolling(10).std()
+        df['volatility_20'] = df['returns_1'].rolling(20).std()
         
-        # 3. Volume Analysis
-        df['volume_sma'] = df['volume'].rolling(window=20).mean()
-        df['volume_ratio'] = df['volume'] / df['volume_sma']
-        df['volume_trend_confirm'] = np.where(
-            (df['close'] > df['close'].shift(1)) & (df['volume'] > df['volume_sma']), 1,
-            np.where((df['close'] < df['close'].shift(1)) & (df['volume'] > df['volume_sma']), -1, 0)
+        df['zscore_close_20'] = (df['close'] - df['close'].rolling(20).mean()) / df['close'].rolling(20).std()
+        df['zscore_volume_20'] = (df['volume'] - df['volume'].rolling(20).mean()) / df['volume'].rolling(20).std()
+        
+        # Add temporal features
+        self.add_temporal_features(df)
+        
+        return df
+        
+    def add_temporal_features(self, df: pd.DataFrame) -> None:
+        """Add temporal features to the dataframe."""
+        # Print index type and sample
+        print("Index type:", type(df.index))
+        print("Sample index:")
+        print(df.index[:5])
+        
+        print("\nExtracting temporal features...")
+        
+        # Extract temporal features
+        df['hour'] = df.index.hour
+        print("Added hour")
+        
+        df['weekday'] = df.index.weekday
+        print("Added weekday")
+        
+        df['month'] = df.index.month
+        print("Added month")
+        
+        df['is_weekend'] = df.index.weekday.isin([5, 6]).astype(int)
+        print("Added is_weekend")
+        
+        # Calculate session progress (0 to 1)
+        df['session_progress'] = (df['hour'] * 60 + df.index.minute) / (24 * 60)
+        print("Added session_progress")
+        
+        # Print sample of temporal features
+        print("\nTemporal features added:")
+        temporal_features = ['hour', 'weekday', 'month', 'is_weekend', 'session_progress']
+        print(df[temporal_features].head())
+        
+        # Print final columns
+        print("\nAfter temporal features:")
+        print(df.columns)
+        
+    def prepare_data(
+        self,
+        df: pd.DataFrame,
+        side: str
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare data for training."""
+        # Select features and target
+        X = df[self.config.selected_features]
+        y = df[f'{side}_target']
+        
+        # Split data (estratificado)
+        try:
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, shuffle=True, stratify=y, random_state=42
+            )
+        except ValueError as e:
+            print(f"[ADVERTENCIA] No se pudo estratificar el split: {e}. Usando split sin stratify.")
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, shuffle=True, random_state=42
+            )
+
+        # Advertencia si alguna clase no está presente
+        for clase in [0, 1]:
+            if clase not in y_train.values:
+                print(f"[ADVERTENCIA] La clase {clase} no está presente en el set de entrenamiento para {side}.")
+            if clase not in y_test.values:
+                print(f"[ADVERTENCIA] La clase {clase} no está presente en el set de test para {side}.")
+        
+        # Impute missing values
+        imputer = SimpleImputer(strategy='mean')
+        X_train = imputer.fit_transform(X_train)
+        X_test = imputer.transform(X_test)
+        
+        # Scale features
+        X_train = self.scalers[side].fit_transform(X_train)
+        X_test = self.scalers[side].transform(X_test)
+        
+        # Handle class imbalance
+        if self.config.use_smote:
+            # Solo aplicar SMOTE si hay al menos 2 muestras de la clase minoritaria
+            if sum(y_train == 1) > 1 and sum(y_train == 0) > 1:
+                smote = SMOTE(random_state=42)
+                X_train, y_train = smote.fit_resample(X_train, y_train)
+            else:
+                print(f"[ADVERTENCIA] No se puede aplicar SMOTE para {side}: muy pocos ejemplos de la clase minoritaria.")
+        
+        return X_train, X_test, y_train, y_test
+        
+    def train_model(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        side: str
+    ) -> Tuple[xgb.XGBClassifier, Dict[str, float]]:
+        """Train model and return metrics."""
+        # Get model parameters
+        params = (
+            self.config.long_params if side == 'long'
+            else self.config.short_params
         )
         
-        # 4. Market Momentum
-        df['rsi_14'] = talib.RSI(df['close'], timeperiod=14)
-        df['rsi_divergence'] = df['rsi_14'] - df['rsi_14'].rolling(window=5).mean()
+        # Create and train model
+        model = xgb.XGBClassifier(**params)
+        model.fit(
+            X_train, y_train,
+            eval_set=[(X_train, y_train)],
+            verbose=False
+        )
         
-        # 5. Pattern Recognition
-        for pattern_func in [talib.CDL3BLACKCROWS, talib.CDL3WHITESOLDIERS, 
+        # Calculate metrics
+        train_pred = model.predict(X_train)
+        train_prob = model.predict_proba(X_train)[:, 1]
+        
+        metrics = {
+            'accuracy': (train_pred == y_train).mean(),
+            'precision': (train_pred & y_train).sum() / train_pred.sum(),
+            'recall': (train_pred & y_train).sum() / y_train.sum(),
+            'f1': 2 * (train_pred & y_train).sum() / (train_pred.sum() + y_train.sum()),
+            'roc_auc': np.nan  # Placeholder for ROC-AUC
+        }
+        
+        return model, metrics
+        
+    def evaluate_model(
+        self,
+        model: xgb.XGBClassifier,
+        X_test: np.ndarray,
+        y_test: np.ndarray
+    ) -> Dict[str, float]:
+        """Evaluate model on test set."""
+        test_pred = model.predict(X_test)
+        test_prob = model.predict_proba(X_test)[:, 1]
+        
+        metrics = {
+            'accuracy': (test_pred == y_test).mean(),
+            'precision': (test_pred & y_test).sum() / max(test_pred.sum(), 1),
+            'recall': (test_pred & y_test).sum() / max(y_test.sum(), 1),
+            'f1': 2 * (test_pred & y_test).sum() / (test_pred.sum() + y_test.sum()),
+            'roc_auc': np.nan  # Placeholder for ROC-AUC
+        }
+        
+        return metrics
+        
+    def get_feature_importance(
+        self,
+        model: xgb.XGBClassifier,
+        side: str
+    ) -> pd.Series:
+        """Get feature importance scores."""
+        importance = model.feature_importances_
+        return pd.Series(
+            importance,
+            index=self.config.selected_features,
+            name=f'{side}_importance'
+        )
+        
+    def train(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Train both long and short models."""
+        results = {
+            'long_metrics': {},
+            'short_metrics': {},
+            'feature_importance': pd.DataFrame(),
+            'test_predictions': pd.DataFrame()
+        }
+        
+        for side in ['long', 'short']:
+            self.logger.info(f"\nTraining {side} model...")
+            
+            # Prepare data
+            X_train, X_test, y_train, y_test = self.prepare_data(df, side)
+            
+            # Train model
+            model, train_metrics = self.train_model(X_train, y_train, side)
+            self.models[side] = model
+            
+            # Evaluate model
+            test_metrics = self.evaluate_model(model, X_test, y_test)
+            
+            # Store results
+            results[f'{side}_metrics'] = test_metrics
+            
+            # Get feature importance
+            importance = self.get_feature_importance(model, side)
+            results['feature_importance'] = pd.concat(
+                [results['feature_importance'], importance],
+                axis=1
+            )
+            
+            # Generate predictions
+            X_scaled = self.scalers[side].transform(df[self.config.selected_features])
+            predictions = model.predict_proba(X_scaled)[:, 1]
+            results['test_predictions'][f'{side}_prob'] = predictions
+            
+            # Log metrics
+            self.logger.info(f"\n{side.capitalize()} Model Metrics:")
+            for metric, value in test_metrics.items():
+                self.logger.info(f"{metric}: {value:.4f}")
+        
+        return results
+        
+    def predict(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Generate predictions for new data."""
+        # Prepare features
+        df = self.prepare_features(df)
+        
+        predictions = pd.DataFrame(index=df.index)
+        
+        for side in ['long', 'short']:
+            if self.models[side] is None:
+                raise ValueError(f"No trained {side} model available")
+            
+            # Scale features
+            X = df[self.config.selected_features]
+            X_scaled = self.scalers[side].transform(X)
+            
+            # Get probabilities
+            probs = self.models[side].predict_proba(X_scaled)[:, 1]
+            predictions[f'{side}_probability'] = probs
+            
+            # Apply threshold
+            threshold = self.config.threshold
+            min_confidence = self.config.min_prediction_confidence
+            
+            predictions[f'{side}_signal'] = (
+                (probs > threshold) &
+                (probs > min_confidence)
+            ).astype(int)
+        
+        return predictions
+
+    def _calculate_ema(self, prices: tuple, period: int) -> np.ndarray:
+        """Calculate EMA using TA-Lib."""
+        return talib.EMA(np.array(prices, dtype=np.float64), timeperiod=period)
+    
+    def _rolling_window(self, a: np.ndarray, window: int) -> np.ndarray:
+        """Create rolling window views of array."""
+        shape = (a.shape[0] - window + 1, window)
+        strides = (a.strides[0], a.strides[0])
+        return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
+    
+    def calculate_advanced_features(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Calculate advanced technical features with optimizations."""
+        df = data.copy()
+        
+        # Ensure data types
+        numeric_columns = ['open', 'high', 'low', 'close', 'volume']
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Convert to numpy arrays with correct type
+        close_array = np.asarray(df['close'].values, dtype=np.float64)
+        high_array = np.asarray(df['high'].values, dtype=np.float64)
+        low_array = np.asarray(df['low'].values, dtype=np.float64)
+        volume_array = np.asarray(df['volume'].values, dtype=np.float64)
+        open_array = np.asarray(df['open'].values, dtype=np.float64)
+        
+        # Cache key for this data
+        cache_key = hash(close_array.tobytes())
+        if cache_key in self._feature_cache:
+            # Merge cached features with existing features
+            cached_features = self._feature_cache[cache_key]
+            for col in cached_features.columns:
+                if col not in df.columns:
+                    df[col] = cached_features[col]
+            return df
+        
+        # Calculate EMAs if not present
+        ema_periods = [20, 50, 200]
+        for period in ema_periods:
+            col_name = f'ema_{period}'
+            if col_name not in df.columns:
+                df[col_name] = self._calculate_ema(tuple(close_array), period)
+                ratio_col = f'price_ema_{period}_ratio'
+                if ratio_col not in df.columns:
+                    df[ratio_col] = close_array / df[col_name].to_numpy()
+        
+        # Calculate trend strength and direction if not present
+        if 'trend_strength' not in df.columns:
+            if 'price_ema_20_ratio' in df.columns:
+                df['trend_strength'] = np.abs(df['price_ema_20_ratio'] - 1) * 100
+        if 'trend_direction' not in df.columns:
+            if 'price_ema_20_ratio' in df.columns:
+                df['trend_direction'] = np.sign(df['price_ema_20_ratio'] - 1)
+        
+        # Calculate volatility features if not present
+        if 'volatility_regime' not in df.columns or 'volatility_ratio' not in df.columns:
+            returns = np.diff(np.log(close_array))
+            returns = np.insert(returns, 0, 0)  # Add 0 at the beginning to maintain length
+            vol_window = 20
+            volatility = np.std(self._rolling_window(returns, vol_window), axis=1)
+            volatility = np.pad(volatility, (vol_window-1, 0), mode='edge')
+            
+            vol_sma = np.convolve(volatility, np.ones(100)/100, mode='valid')
+            vol_sma = np.pad(vol_sma, (99, 0), mode='edge')
+            
+            if 'volatility_regime' not in df.columns:
+                df['volatility_regime'] = np.where(volatility > vol_sma, 1, -1)
+            if 'volatility_ratio' not in df.columns:
+                df['volatility_ratio'] = volatility / vol_sma
+        
+        # Calculate volume ratio if not present
+        if 'volume_ratio' not in df.columns:
+            volume_sma = np.convolve(volume_array, np.ones(20)/20, mode='valid')
+            volume_sma = np.pad(volume_sma, (19, 0), mode='edge')
+            df['volume_ratio'] = volume_array / volume_sma
+        
+        # Calculate pattern recognition if not present
+        pattern_funcs = [
+            talib.CDL3BLACKCROWS, talib.CDL3WHITESOLDIERS,
                            talib.CDLENGULFING, talib.CDLHARAMI, 
-                           talib.CDLMORNINGSTAR, talib.CDLEVENINGSTAR]:
+            talib.CDLMORNINGSTAR, talib.CDLEVENINGSTAR
+        ]
+        
+        for pattern_func in pattern_funcs:
             pattern_name = pattern_func.__name__.replace('CDL', '').lower()
-            df[f'pattern_{pattern_name}'] = pattern_func(df['open'], df['high'], 
-                                                       df['low'], df['close'])
+            pattern_col = f'pattern_{pattern_name}'
+            if pattern_col not in df.columns:
+                try:
+                    df[pattern_col] = pattern_func(
+                        open_array, high_array, low_array, close_array
+                    )
+                except Exception as e:
+                    print(f"Error calculating pattern {pattern_name}: {str(e)}")
+                    df[pattern_col] = np.zeros_like(close_array)
         
-        # 6. Support/Resistance Levels
-        df['pivot'] = (df['high'] + df['low'] + df['close']) / 3
-        df['support_1'] = df['pivot'] - (df['high'] - df['low'])
-        df['resistance_1'] = df['pivot'] + (df['high'] - df['low'])
-        df['price_to_support'] = (df['close'] - df['support_1']) / df['support_1']
-        df['price_to_resistance'] = (df['resistance_1'] - df['close']) / df['close']
-        
-        # 7. Market Efficiency
-        df['efficiency_ratio'] = abs(df['close'] - df['close'].shift(20)) / \
-                                df['close'].diff().abs().rolling(window=20).sum()
-        
-        # 8. Mean Reversion
-        df['zscore_price'] = (df['close'] - df['close'].rolling(window=20).mean()) / \
-                            df['close'].rolling(window=20).std()
-        
-        # 9. Trend Exhaustion
-        df['adx'] = talib.ADX(df['high'], df['low'], df['close'], timeperiod=14)
-        df['trend_exhaustion'] = np.where(df['adx'] > 40, 1, 0)
-        
-        # 10. Volatility Breakout
-        df['bb_upper'], df['bb_middle'], df['bb_lower'] = talib.BBANDS(
-            df['close'], timeperiod=20, nbdevup=2, nbdevdn=2
-        )
-        df['bb_breakout'] = np.where(df['close'] > df['bb_upper'], 1,
-                                    np.where(df['close'] < df['bb_lower'], -1, 0))
+        # Cache the new features
+        new_features = df[[col for col in df.columns if col not in data.columns]]
+        if not new_features.empty:
+            self._feature_cache[cache_key] = new_features
         
         return df
     
@@ -183,22 +583,22 @@ class MLPipeline:
         signals = pd.DataFrame(index=X_test.index)
         
         # Get probabilities and thresholds
-        long_threshold = self.config['model_config']['long_model']['threshold']
-        short_threshold = self.config['model_config']['short_model']['threshold']
+        long_threshold = self.config.model_config['long_model']['threshold']
+        short_threshold = self.config.model_config['short_model']['threshold']
         
         # Generate signals
         signals['long_prob'] = long_probs
         signals['short_prob'] = short_probs
         
         # Apply minimum probability filter
-        long_min_prob = self.config['model_config']['long_model']['min_probability']
-        short_min_prob = self.config['model_config']['short_model']['min_probability']
+        long_min_prob = self.config.model_config['long_model']['min_probability']
+        short_min_prob = self.config.model_config['short_model']['min_probability']
         
         # Calculate position sizes with market context
         signals['long_size'] = signals.apply(
             lambda row: self.calculate_position_size(
                 row['long_prob'],
-                self.config['model_config']['long_model'],
+                self.config.model_config['long_model'],
                 current_drawdown,
                 X_test.loc[row.name]
             ) if row['long_prob'] >= long_threshold and row['long_prob'] >= long_min_prob else 0,
@@ -208,7 +608,7 @@ class MLPipeline:
         signals['short_size'] = signals.apply(
             lambda row: self.calculate_position_size(
                 row['short_prob'],
-                self.config['model_config']['short_model'],
+                self.config.model_config['short_model'],
                 current_drawdown,
                 X_test.loc[row.name]
             ) if row['short_prob'] >= short_threshold and row['short_prob'] >= short_min_prob else 0,
@@ -255,330 +655,17 @@ class MLPipeline:
         
         return signals
     
-    def prepare_features(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Prepare feature set from raw data."""
-        df = data.copy()
+    def calculate_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+        """Calculate classification metrics."""
+        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
         
-        # Add technical indicators
-        for feature_name, feature_config in self.config['features_config'].items():
-            if feature_config['type'] == 'technical':
-                params = feature_config.get('params', {})
-                if feature_name == 'rsi':
-                    df[f'rsi_{params["window"]}'] = talib.RSI(df['close'], timeperiod=params['window'])
-                elif feature_name == 'macd':
-                    macd, signal, hist = talib.MACD(df['close'], 
-                                                  fastperiod=params['fast'],
-                                                  slowperiod=params['slow'],
-                                                  signalperiod=params['signal'])
-                    df['macd'] = macd
-                    df['macd_signal'] = signal
-                    df['macd_histogram'] = hist
-                elif feature_name == 'stoch':
-                    k, d = talib.STOCH(df['high'], df['low'], df['close'],
-                                     fastk_period=params['k_window'],
-                                     slowk_period=params['k_window'],
-                                     slowd_period=params['d_window'])
-                    df['stoch_k'] = k
-                    df['stoch_d'] = d
-                elif feature_name == 'atr':
-                    df[f'atr_{params["window"]}'] = talib.ATR(df['high'], df['low'], df['close'],
-                                                             timeperiod=params['window'])
-                elif feature_name == 'bbands':
-                    upper, middle, lower = talib.BBANDS(df['close'],
-                                                      timeperiod=params['window'],
-                                                      nbdevup=params['num_std'],
-                                                      nbdevdn=params['num_std'])
-                    df[f'bb_upper'] = upper
-                    df[f'bb_middle'] = middle
-                    df[f'bb_lower'] = lower
-                elif feature_name == 'obv':
-                    df['obv'] = talib.OBV(df['close'], df['volume'])
-                elif feature_name == 'vwap':
-                    df['vwap'] = (df['volume'] * df['close']).rolling(window=params['window']).sum() / df['volume'].rolling(window=params['window']).sum()
-                    df['vwap_distance'] = (df['close'] - df['vwap']) / df['vwap']
-        
-        # Add temporal features
-        if 'temporal' in self.config['features_config']:
-            temporal_config = self.config['features_config']['temporal']
-            if 'hour' in temporal_config['params']['features']:
-                df['hour'] = pd.to_datetime(df.index).hour
-            if 'weekday' in temporal_config['params']['features']:
-                df['weekday'] = pd.to_datetime(df.index).weekday
-            if 'month' in temporal_config['params']['features']:
-                df['month'] = pd.to_datetime(df.index).month
-            if 'is_weekend' in temporal_config['params']['features']:
-                df['is_weekend'] = pd.to_datetime(df.index).weekday >= 5
-            if 'session_progress' in temporal_config['params']['features']:
-                df['session_progress'] = (pd.to_datetime(df.index).hour * 60 + pd.to_datetime(df.index).minute) / (24 * 60)
-        
-        # Add statistical features
-        for feature_name, feature_config in self.config['features_config'].items():
-            if feature_config['type'] == 'statistical':
-                params = feature_config.get('params', {})
-                if feature_name == 'returns':
-                    for window in params['window']:
-                        if params['type'] == 'log':
-                            df[f'return_{window}'] = np.log(df['close'] / df['close'].shift(window))
-                        else:
-                            df[f'return_{window}'] = df['close'].pct_change(window)
-                elif feature_name == 'volatility':
-                    for window in params['window']:
-                        if params['type'] == 'realized':
-                            df[f'volatility_{window}'] = df['close'].pct_change().rolling(window=window).std()
-                elif feature_name == 'zscore':
-                    for col in params['columns']:
-                        df[f'zscore_{col}_{params["window"]}'] = (df[col] - df[col].rolling(window=params['window']).mean()) / df[col].rolling(window=params['window']).std()
-        
-        # Select features
-        feature_cols = self.config['model_config']['selected_features']
-        missing_cols = [col for col in feature_cols if col not in df.columns]
-        if missing_cols:
-            print(f"Warning: Missing features: {missing_cols}")
-            feature_cols = [col for col in feature_cols if col in df.columns]
-        
-        # Ensure all features are numeric
-        for col in feature_cols:
-            if not np.issubdtype(df[col].dtype, np.number):
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-        
-        # Handle NaN values
-        df_features = df[feature_cols].copy()
-        
-        # Forward fill NaN values first
-        df_features = df_features.fillna(method='ffill')
-        
-        # For any remaining NaN values (at the start of the series), backward fill
-        df_features = df_features.fillna(method='bfill')
-        
-        # For any still remaining NaN values, fill with 0
-        df_features = df_features.fillna(0)
-        
-        # Remove any infinite values
-        df_features = df_features.replace([np.inf, -np.inf], np.nan)
-        df_features = df_features.fillna(0)
-        
-        return df_features
-    
-    def prepare_target(self, data: pd.DataFrame) -> pd.Series:
-        """Prepare target variable with adaptive thresholds and market regime consideration."""
-        df = data.copy()
-        
-        # Calculate multiple horizons for adaptive targets
-        horizons = [5, 10, 20]
-        future_returns = pd.DataFrame(index=df.index)
-        
-        for horizon in horizons:
-            future_returns[f'return_{horizon}'] = df['close'].pct_change(horizon).shift(-horizon)
-        
-        # Calculate dynamic threshold based on volatility
-        volatility = df['close'].pct_change().rolling(window=50).std()
-        atr_volatility = df['atr_14'] / df['close']
-        
-        # Combine different volatility measures
-        combined_volatility = (volatility + atr_volatility) / 2
-        
-        # Calculate adaptive thresholds - more aggressive
-        base_threshold = 0.5  # Reduced from 1.0
-        threshold = base_threshold * combined_volatility
-        
-        # Adjust threshold based on market regime
-        if 'trend_strength' in df.columns:
-            threshold = threshold * (1 + 0.25 * df['trend_strength'])  # Reduced from 0.5
-        
-        if 'volatility_regime' in df.columns:
-            threshold = threshold * (1 + 0.15 * df['volatility_regime'])  # Reduced from 0.25
-        
-        # Create target variable
-        target = pd.Series(0, index=df.index)
-        
-        # Weight different horizons
-        weights = [0.5, 0.3, 0.2]  # Weights for 5, 10, 20 periods
-        weighted_returns = pd.Series(0.0, index=df.index)
-        
-        for horizon, weight in zip(horizons, weights):
-            weighted_returns += future_returns[f'return_{horizon}'] * weight
-        
-        # Generate signals based on weighted returns and threshold
-        target[weighted_returns > threshold] = 1  # Long signals
-        target[weighted_returns < -threshold] = -1  # Short signals
-        
-        # Additional filters for target generation - less restrictive
-        if 'trend_direction' in df.columns and 'volume_trend_confirm' in df.columns:
-            # Only generate long signals in uptrend with volume confirmation
-            uptrend_mask = (df['trend_direction'] == 1) & (df['volume_trend_confirm'] >= 0)  # Changed from == 1
-            target[~uptrend_mask & (target == 1)] = 0
-            
-            # Only generate short signals in downtrend with volume confirmation
-            downtrend_mask = (df['trend_direction'] == -1) & (df['volume_trend_confirm'] <= 0)  # Changed from == -1
-            target[~downtrend_mask & (target == -1)] = 0
-        
-        # Don't generate signals near support/resistance levels - more lenient
-        if 'price_to_support' in df.columns and 'price_to_resistance' in df.columns:
-            near_support = df['price_to_support'] < 0.005  # Reduced from 0.01
-            near_resistance = df['price_to_resistance'] < 0.005  # Reduced from 0.01
-            target[near_support & (target == -1)] = 0
-            target[near_resistance & (target == 1)] = 0
-        
-        # Consider RSI extremes - more lenient
-        if 'rsi_14' in df.columns:
-            target[(df['rsi_14'] > 85) & (target == 1)] = 0  # Increased from 80
-            target[(df['rsi_14'] < 15) & (target == -1)] = 0  # Decreased from 20
-        
-        # Consider pattern recognition - more lenient
-        pattern_columns = [col for col in df.columns if col.startswith('pattern_')]
-        if pattern_columns:
-            for col in pattern_columns:
-                if '3whitesoldiers' in col or 'morningstar' in col:
-                    target[(df[col] > 0) & (target == -1)] = 0
-                elif '3blackcrows' in col or 'eveningstar' in col:
-                    target[(df[col] > 0) & (target == 1)] = 0
-        
-        # Forward fill NaN values that might have been created
-        target = target.fillna(0)
-        
-        # Remove signals too close to the end of the dataset
-        target.iloc[-max(horizons):] = 0
-        
-        return target
-    
-    def prepare_train_test_split(
-        self,
-        X: pd.DataFrame,
-        y: pd.Series,
-        n_splits: int = 5,
-        test_size: float = 0.2
-    ) -> List[tuple]:
-        """Prepare time series cross-validation splits."""
-        # Calculate the size of each fold
-        n_samples = len(X)
-        test_samples = int(n_samples * test_size)
-        train_samples = n_samples - test_samples
-        
-        # Create splits
-        splits = []
-        for i in range(n_splits):
-            # Calculate indices for this fold
-            fold_size = test_samples // n_splits
-            test_start = train_samples + i * fold_size
-            test_end = min(test_start + fold_size, n_samples)
-            
-            # Skip if we've reached the end of the data
-            if test_start >= n_samples:
-                break
-                
-            # Create train/test indices
-            train_idx = list(range(test_start))
-            test_idx = list(range(test_start, test_end))
-            splits.append((train_idx, test_idx))
-        
-        return splits
-    
-    def train_model(
-        self,
-        X_train: pd.DataFrame,
-        y_train: pd.Series,
-        model_config: Dict,
-        positive_class: int = 1
-    ) -> xgb.XGBClassifier:
-        """Train model with given configuration."""
-        # Convert target to binary for specific class
-        y_tr = (y_train == positive_class).astype(int)
-        
-        # Scale features while preserving feature names
-        X_tr_scaled = pd.DataFrame(
-            self.scaler.fit_transform(X_train),
-            columns=X_train.columns,
-            index=X_train.index
-        )
-        
-        # Handle class imbalance
-        if model_config.get('use_smote', False):
-            try:
-                # Count samples in minority class
-                minority_samples = y_tr.sum() if y_tr.mean() < 0.5 else len(y_tr) - y_tr.sum()
-                
-                if minority_samples > 5:  # Only use SMOTE if we have enough minority samples
-                    smote = SMOTE(random_state=42)
-                    X_resampled_array, y_resampled = smote.fit_resample(X_tr_scaled, y_tr)
-                    X_resampled = pd.DataFrame(X_resampled_array, columns=X_tr_scaled.columns)
-                else:
-                    # If too few samples, use random oversampling
-                    from imblearn.over_sampling import RandomOverSampler
-                    ros = RandomOverSampler(random_state=42)
-                    X_resampled_array, y_resampled = ros.fit_resample(X_tr_scaled, y_tr)
-                    X_resampled = pd.DataFrame(X_resampled_array, columns=X_tr_scaled.columns)
-            except Exception as e:
-                print(f"Warning: Resampling failed ({str(e)}), proceeding with original data")
-                X_resampled, y_resampled = X_tr_scaled, y_tr
-        else:
-            X_resampled, y_resampled = X_tr_scaled, y_tr
-        
-        # Initialize and train model
-        model = xgb.XGBClassifier(
-            **model_config['model_params'],
-            random_state=42
-        )
-        
-        # Add class weights if specified
-        if model_config.get('class_weight') == 'balanced':
-            scale_pos_weight = (len(y_resampled) - sum(y_resampled)) / sum(y_resampled)
-            model.set_params(scale_pos_weight=scale_pos_weight)
-        
-        # Train model
-        model.fit(
-            X_resampled,
-            y_resampled,
-            eval_set=[(X_resampled, y_resampled)],
-            verbose=False
-        )
-        
-        return model
-    
-    def evaluate_model(
-        self,
-        model: xgb.XGBClassifier,
-        X_test: pd.DataFrame,
-        y_test: pd.Series,
-        positive_class: int = 1
-    ) -> Dict:
-        """Evaluate model performance."""
-        # Prepare binary target
-        y_binary = (y_test == positive_class).astype(int)
-        
-        # Get predictions
-        y_pred = model.predict(X_test)
-        y_prob = model.predict_proba(X_test)[:, 1]
-        
-        # Initialize metrics dictionary
-        metrics = {}
-        
-        # Basic metrics with zero_division parameter
-        metrics['accuracy'] = accuracy_score(y_binary, y_pred)
-        metrics['balanced_accuracy'] = balanced_accuracy_score(y_binary, y_pred)
-        metrics['precision'] = precision_score(y_binary, y_pred, zero_division=0)
-        metrics['recall'] = recall_score(y_binary, y_pred, zero_division=0)
-        metrics['f1'] = f1_score(y_binary, y_pred, zero_division=0)
-        
-        # ROC-AUC score (only if both classes are present)
-        if len(np.unique(y_binary)) > 1:
-            metrics['roc_auc'] = roc_auc_score(y_binary, y_prob)
-        else:
-            metrics['roc_auc'] = 0.5  # Default for single-class case
-        
-        # Confusion matrix (ensure both classes are represented)
-        cm = confusion_matrix(y_binary, y_pred, labels=[0, 1])
-        tn, fp, fn, tp = cm.ravel()
-        
-        metrics['true_negative'] = int(tn)
-        metrics['false_positive'] = int(fp)
-        metrics['false_negative'] = int(fn)
-        metrics['true_positive'] = int(tp)
-        
-        # Additional metrics
-        metrics['specificity'] = tn / (tn + fp) if (tn + fp) > 0 else 0
-        metrics['total_samples'] = len(y_test)
-        metrics['positive_samples'] = int(y_binary.sum())
-        metrics['negative_samples'] = int(len(y_binary) - y_binary.sum())
+        metrics = {
+            'accuracy': accuracy_score(y_true, y_pred),
+            'precision': precision_score(y_true, y_pred, zero_division=0),
+            'recall': recall_score(y_true, y_pred, zero_division=0),
+            'f1': f1_score(y_true, y_pred, zero_division=0),
+            'roc_auc': roc_auc_score(y_true, y_pred)
+        }
         
         return metrics
     
@@ -615,64 +702,58 @@ class MLPipeline:
             
             # Train models
             print("Training long model...")
-            self.long_model = self.train_model(X_train_imputed, y_train, self.config['model_config']['long_model'], 1)
+            self.long_model = self.train_model(
+                X_train_imputed, 
+                y_train, 
+                'long'
+            )
             
             print("Training short model...")
-            self.short_model = self.train_model(X_train_imputed, y_train, self.config['model_config']['short_model'], -1)
+            self.short_model = self.train_model(
+                X_train_imputed, 
+                y_train, 
+                'short'
+            )
             
-            # Generate predictions
-            print("Generating predictions...")
-            long_probs = self.long_model.predict_proba(X_test_imputed)[:, 1]
-            short_probs = self.short_model.predict_proba(X_test_imputed)[:, 1]
+            # Make predictions
+            long_probs = self.long_model[0].predict_proba(X_test_imputed)[:, 1]
+            short_probs = self.short_model[0].predict_proba(X_test_imputed)[:, 1]
             
-            # Generate signals
-            signals = self.generate_signals(X_test_imputed, long_probs, short_probs)
+            # Calculate positions
+            positions = self.calculate_positions(long_probs, short_probs)
+            
+            # Store predictions
+            predictions = pd.DataFrame({
+                'long_prob': long_probs,
+                'short_prob': short_probs,
+                'position': positions
+            }, index=X_test.index)
+            
+            # Calculate metrics
+            long_metrics = self.calculate_metrics(y_test == 1, long_probs > 0.5)
+            short_metrics = self.calculate_metrics(y_test == -1, short_probs > 0.5)
             
             # Store results
-            if i == len(splits) - 1:  # Only store results for the last split
-                results['long_metrics'] = self.evaluate_model(self.long_model, X_test_imputed, y_test, 1)
-                results['short_metrics'] = self.evaluate_model(self.short_model, X_test_imputed, y_test, -1)
-                results['feature_importance'] = self._get_feature_importance()
-                results['test_predictions'] = signals
+            results[f'fold_{i}'] = {
+                'predictions': predictions,
+                'long_metrics': long_metrics,
+                'short_metrics': short_metrics
+            }
         
-        # Store feature names
-        self.feature_names = self.config['model_config']['selected_features']
-        
-        # Train models
-        print("Training long model...")
-        self.long_model = self.train_model(X_train, y_train, self.config['model_config']['long_model'], 1)
-        
-        print("Training short model...")
-        self.short_model = self.train_model(X_train, y_train, self.config['model_config']['short_model'], -1)
-        
-        # Generate predictions
-        print("Generating predictions...")
-        X_test_imputed = self.imputer.transform(X_test)
-        X_test_scaled = self.scaler.transform(X_test_imputed)
-        
-        long_probs = self.long_model.predict_proba(X_test_scaled)[:, 1]
-        short_probs = self.short_model.predict_proba(X_test_scaled)[:, 1]
-        
-        # Generate signals with position sizing
-        signals = self.generate_signals(X_test, long_probs, short_probs)
-        
-        # Calculate metrics
-        print("Calculating metrics...")
-        long_metrics = self.evaluate_model(self.long_model, X_test, y_test, 1)
-        short_metrics = self.evaluate_model(self.short_model, X_test, y_test, -1)
+        # Combine results
+        all_predictions = pd.concat([r['predictions'] for r in results.values()])
         
         # Calculate feature importance
         feature_importance = pd.DataFrame({
-            'long_importance': self.long_model.feature_importances_,
-            'short_importance': self.short_model.feature_importances_
-        }, index=self.feature_names)
+            'long_importance': self.long_model[0].feature_importances_,
+            'short_importance': self.short_model[0].feature_importances_
+        }, index=X.columns)
         
         return {
-            'long_metrics': long_metrics,
-            'short_metrics': short_metrics,
+            'test_predictions': all_predictions,
             'feature_importance': feature_importance,
-            'test_predictions': signals,
-            'test_index': X_test.index
+            'long_metrics': results['fold_0']['long_metrics'],
+            'short_metrics': results['fold_0']['short_metrics']
         }
     
     def analyze_results(self, results: Dict, save_plots: bool = True):
@@ -760,12 +841,12 @@ class MLPipeline:
     def _get_feature_importance(self) -> pd.DataFrame:
         """Get feature importance from both models."""
         long_importance = pd.Series(
-            self.long_model.feature_importances_,
+            self.long_model[0].feature_importances_,
             index=self.feature_names,
             name='long_importance'
         )
         short_importance = pd.Series(
-            self.short_model.feature_importances_,
+            self.short_model[0].feature_importances_,
             index=self.feature_names,
             name='short_importance'
         )
@@ -780,12 +861,12 @@ class MLPipeline:
         X_scaled = self.scaler.transform(X_imputed)
         
         # Get probabilities
-        long_prob = self.long_model.predict_proba(X_scaled)[:, 1]
-        short_prob = self.short_model.predict_proba(X_scaled)[:, 1]
+        long_prob = self.long_model[0].predict_proba(X_scaled)[:, 1]
+        short_prob = self.short_model[0].predict_proba(X_scaled)[:, 1]
         
         # Apply probability thresholds
-        long_threshold = self.config['model_config']['long_model']['threshold']
-        short_threshold = self.config['model_config']['short_model']['threshold']
+        long_threshold = self.config.model_config['long_model']['threshold']
+        short_threshold = self.config.model_config['short_model']['threshold']
         
         # Create predictions DataFrame
         predictions = pd.DataFrame({
