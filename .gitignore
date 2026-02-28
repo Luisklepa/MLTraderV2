@@ -70,6 +70,7 @@ logs/
 # Distribution
 *.pot
 *.pyc
+*.whl
 local_settings.py
 db.sqlite3
 

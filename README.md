@@ -1,295 +1,245 @@
-# MLTrader: ML-Powered Cryptocurrency Trading System
+# MLTraderV2 — ML-Powered Cryptocurrency Trading System
 
-## Overview
-
-MLTtrader is a sophisticated cryptocurrency trading system that combines machine learning with robust trading strategies. The system uses advanced ML models to predict market movements and generate trading signals, while implementing comprehensive risk management and portfolio optimization.
+Sistema de trading con machine learning para criptomonedas (Binance). Incluye pipeline de features, modelos XGBoost long/short, backtesting con Backtrader, walk-forward analysis, gestión de riesgo y una app Streamlit para entrenar y evaluar.
 
 ```mermaid
 graph TD
-    A[Data Collection] --> B[Feature Engineering]
-    B --> C[ML Pipeline]
-    C --> D[Signal Generation]
-    D --> E[Risk Management]
-    E --> F[Order Execution]
+    A[Binance Data] --> B[Feature Engineering]
+    B --> C[Target Builder]
+    C --> D[ML Pipeline / Train]
+    D --> E[Signal Generation]
+    E --> F[Backtest / Walk-Forward]
+    F --> G[Risk & Results]
 ```
 
-## Features
+## Características
 
-### Data Processing
-- Real-time market data collection
-- Advanced feature engineering
-- Efficient data preprocessing
-- Parallel computation support
+### Datos y features
+- Obtención de klines desde Binance API con cache TTL y rate limiting
+- Pipeline de features: precios, volumen, medias móviles, momentum (RSI, MACD, etc.), volatilidad (ATR, Bollinger), patrones candlestick, temporales
+- Target builder con umbrales dinámicos (ATR), filtros de volatilidad/volumen/tendencia y métricas de calidad
 
 ### Machine Learning
-- XGBoost-based prediction models
-- Feature selection and importance analysis
-- Model performance monitoring
-- Automated model retraining
+- Modelos XGBoost separados para señales long y short
+- Entrenamiento con split temporal y escalado solo en train (sin data leakage)
+- Walk-forward out-of-sample y TimeSeriesSplit
+- SMOTE opcional para desbalance; selección de features y optimización con Optuna
+- Model registry para versionado de modelos y validación de features
 
-### Trading Strategy
-- ML-driven signal generation
-- Dynamic position sizing
-- Multiple timeframe analysis
-- Advanced entry/exit rules
+### Backtest y estrategia
+- Motor Backtrader: estrategia ML con ATR, stops adaptativos y gestión de posición
+- Walk-forward analyzer (ventanas fijas o expanding) para validación robusta
+- Métricas: Sharpe, drawdown, win rate, profit factor; robustness metrics y Monte Carlo
 
-### Risk Management
-- Position size optimization
-- Portfolio risk controls
-- Dynamic stop-loss/take-profit
-- Exposure management
+### Infraestructura
+- Configuración unificada en `config/settings.py` (Pydantic-style con dataclasses)
+- Logging centralizado (`core/logging_config.py`) y health check (`core/health.py`)
+- Docker + docker-compose para ejecutar la app Streamlit con volúmenes para logs, datos y modelos
+- Suite de tests con pytest (cobertura de core, ml, backtest, config)
 
-### Performance
-- Parallel processing
-- Memory-efficient operations
-- Caching system
-- Performance monitoring
+## Requisitos
 
-## Installation
+- Python 3.10+
+- [TA-Lib](https://ta-lib.org/) (instalación según SO; en Windows puede requerir wheel precompilado)
+- Cuenta Binance (opcional para datos en vivo; para backtest basta con CSV o API pública)
 
-### Prerequisites
-- Python 3.8+
-- pip
-- git
-- Virtual environment tool
+## Instalación
 
-### Setup
+### 1. Clonar y entorno virtual
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/backtrader.git
-cd backtrader
-```
-
-2. Create and activate virtual environment:
-```bash
+git clone https://github.com/luisklepa/MLTraderV2.git
+cd MLTraderV2
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
+# Windows:
+venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
 ```
 
-3. Install dependencies:
+### 2. Dependencias
+
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Install development dependencies (optional):
-```bash
-pip install -r requirements-dev.txt
-```
-
-## Quick Start
-
-### 1. Configure the System
-
-Create or modify `config/settings.py`:
-```python
-TRADING_PAIRS = ['BTCUSDT']
-TIMEFRAMES = ['1h']
-RISK_LIMITS = {
-    'max_position_size': 1.0,
-    'max_drawdown': 0.20
-}
-```
-
-### 2. Run Backtesting
+Si existe `requirements.lock` y quieres reproducir el entorno exacto:
 
 ```bash
-python scripts/run_ml_backtest.py \
-    --config config/ml_pipeline_config.yaml \
-    --data-file data/btcusdt_prices.csv \
-    --output-dir results/
+pip install -r requirements.lock
 ```
 
-### 3. Train ML Model
+### 3. Variables de entorno
+
+Copia el ejemplo y ajusta (API keys solo necesarias para producción o descarga masiva):
 
 ```bash
-python scripts/run_ml_pipeline.py \
-    --config config/ml_pipeline_config.yaml \
-    --train-data data/btcusdt_ml_dataset.csv \
-    --model-dir models/
+cp .env.example .env
 ```
 
-### 4. Run Trading Strategy
+Edita `.env` según necesidad:
+
+- `ENVIRONMENT=development` o `production`
+- `BINANCE_API_KEY` / `BINANCE_API_SECRET` (obligatorios en production)
+- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` (opcional)
+- `LOG_LEVEL`, `INITIAL_CAPITAL`, etc.
+
+## Uso rápido
+
+### App Streamlit (recomendado para explorar)
 
 ```bash
-python scripts/run_ml_strategy.py \
-    --config config/settings.py \
-    --model models/xgboost_model.pkl
+streamlit run app.py
 ```
 
-## Documentation
+Puerto por defecto: 8501. Desde la app puedes cargar configs YAML, entrenar modelos, ejecutar backtests y walk-forward.
 
-- [Technical Documentation](docs/TECHNICAL_DOCS.md)
-- [API Reference](docs/API.md)
-- [Architecture Guide](docs/ARCHITECTURE.md)
-- [Developer Guide](docs/DEVELOPER_GUIDE.md)
+### Entrenar modelo (CLI)
 
-## Project Structure
+```bash
+python -m ml.train_model
+# o con dataset/opciones propias editando el bloque __main__
+```
+
+### Pipeline ML (config YAML)
+
+```bash
+python scripts/run_ml_pipeline.py --config config/ml_pipeline_config.yaml --output-dir results/
+```
+
+### Backtest con estrategia ML
+
+```bash
+python scripts/run_ml_backtest.py --config config/trading_config.yaml --start-date 2024-01-01 --end-date 2024-06-01 --output-dir results/
+```
+
+### Walk-forward
+
+```bash
+python scripts/run_walk_forward.py
+```
+
+### Descargar datos Binance
+
+```bash
+python scripts/download_data.py --symbol BTCUSDT --interval 15m --output data/btcusdt_prices.csv
+```
+
+### Health check (diagnóstico)
+
+```bash
+python -c "from core.health import check_health; import json; print(json.dumps(check_health(), indent=2))"
+```
+
+## Docker
+
+```bash
+docker-compose up --build
+```
+
+La app queda en `http://localhost:8501`. Volúmenes: `./logs`, `./data`, `./models`. Variables de entorno desde `.env`.
+
+## Estructura del proyecto
 
 ```
-backtrader/
-├── analysis/           # Analysis tools
-├── backtest/          # Backtesting engine
-├── config/            # Configuration files
-│   ├── file_paths.yaml       # File path configuration
+MLTraderV2/
+├── app.py                 # App Streamlit principal
+├── core/                  # Núcleo compartido
+│   ├── logging_config.py  # Configuración de logging
+│   ├── health.py          # Health check
+│   ├── data_fetcher.py    # Binance API + cache
+│   ├── data_feed.py       # DataFeed / OptimizedDataFeed / MLSignalData
+│   ├── file_management.py # Rutas y directorios desde YAML
+│   └── ...
+├── ml/                    # Machine learning
+│   ├── feature_pipeline.py
+│   ├── target_builder.py
+│   ├── pipeline.py       # MLPipeline, FeatureEngine, ModelTrainer, SignalGenerator
+│   ├── train_model.py
+│   ├── model_registry.py
+│   ├── model_optimization.py
+│   ├── signal_filter.py
+│   └── ...
+├── backtest/              # Backtesting
+│   ├── engine.py         # BacktestEngine (Backtrader)
+│   ├── walk_forward.py
+│   ├── robustness_metrics.py
+│   ├── visualization.py
+│   └── event_engine.py
+├── strategies/            # Estrategias Backtrader
+│   └── ml_strategy.py    # MLStrategy, EnhancedMLStrategy
+├── config/                # Configuración
+│   ├── settings.py       # TradingConfig, RiskConfig, DataConfig, etc.
 │   ├── ml_pipeline_config.yaml
-│   ├── robustness_config.py
-│   ├── settings.py
-│   └── walk_forward_config.py
-├── data/              # Data storage
-│   ├── raw/          # Raw market data (e.g., BTCUSDT prices)
-│   ├── features/     # Feature datasets (e.g., ML datasets)
-│   ├── processed/    # Processed data files
-│   └── cache/        # Cached computations
-├── docs/              # Documentation
-│   ├── API.md
-│   ├── ARCHITECTURE.md
-│   ├── DEVELOPER_GUIDE.md
-│   └── TECHNICAL_DOCS.md
-├── indicators/        # Technical indicators
-├── models/           # Trained models
-│   ├── random_forest/  # Random Forest models
-│   ├── xgboost/       # XGBoost models
-│   └── metadata/      # Model metadata
-├── results/          # Analysis results
-│   ├── feature_importance/  # Feature importance data
-│   ├── metrics/            # Performance metrics
-│   └── plots/             # Generated plots
-├── scripts/          # Utility scripts
-├── strategies/       # Trading strategies
-├── tests/            # Test suite
-└── utils/            # Utility functions
+│   ├── trading_config.yaml
+│   ├── walk_forward_config.py
+│   └── robustness_config.py
+├── scripts/               # Scripts ejecutables
+│   ├── run_ml_pipeline.py
+│   ├── run_ml_backtest.py
+│   ├── run_walk_forward.py
+│   ├── prepare_ml_dataset.py
+│   ├── download_data.py
+│   └── analysis/
+├── tests/                 # Tests pytest
+│   ├── conftest.py
+│   ├── test_feature_pipeline.py
+│   ├── test_pipeline.py
+│   ├── test_train_model.py
+│   ├── test_target_builder.py
+│   ├── test_walk_forward.py
+│   ├── test_engine.py
+│   ├── test_data_feed.py
+│   ├── test_model_optimization.py
+│   ├── test_configs.py
+│   └── ...
+├── docker-compose.yml
+├── Dockerfile
+├── .env.example
+├── requirements.txt
+├── requirements.lock
+└── pyproject.toml
 ```
 
-## Configuration
-
-### Data Configuration
-```yaml
-data:
-  source: binance
-  pairs:
-    - BTCUSDT
-    - ETHUSDT
-  timeframes:
-    - 1h
-    - 4h
-```
-
-### Model Configuration
-```yaml
-model:
-  type: xgboost
-  params:
-    n_estimators: 1000
-    max_depth: 8
-    learning_rate: 0.01
-```
-
-### Trading Configuration
-```yaml
-trading:
-  risk_limits:
-    max_position_size: 1.0
-    max_drawdown: 0.20
-  thresholds:
-    entry: 0.40
-    exit: 0.35
-```
-
-## Performance Metrics
-
-The system tracks various performance metrics:
-
-1. Trading Performance
-- Sharpe Ratio
-- Maximum Drawdown
-- Win Rate
-- Profit Factor
-
-2. Risk Metrics
-- Value at Risk (VaR)
-- Expected Shortfall
-- Portfolio Beta
-- Correlation Matrix
-
-3. System Metrics
-- Processing Time
-- Memory Usage
-- Model Accuracy
-- Signal Quality
-
-## Development
-
-### Running Tests
+## Tests
 
 ```bash
-# Run all tests
-pytest
+# Todos los tests
+python -m pytest tests/ -v
 
-# Run specific test file
-pytest tests/test_trading_strategy.py
-
-# Run with coverage
-pytest --cov=backtrader tests/
+# Con cobertura
+python -m pytest tests/ -v --cov=core --cov=ml --cov=backtest --cov=config
 ```
 
-### Code Style
+Los entry points (app, scripts, `ml.train_model`, etc.) llaman a `setup_logging()` desde `core.logging_config` para unificar logs.
 
-```bash
-# Format code
-black .
+## Configuración relevante
 
-# Run linter
-pylint backtrader
+- **Trading/riesgo:** `config/settings.py` — `TradingConfig`, `RiskConfig` (capital, comisión, max drawdown, position sizing).
+- **Datos:** `DataConfig` — símbolo, timeframe, lookback, API Binance.
+- **Pipeline ML:** `config/ml_pipeline_config.yaml` — modelos, features, umbrales.
+- **Walk-forward:** `config/walk_forward_config.py` — tamaños de ventana, gap, métricas.
+- **Robustez:** `config/robustness_config.py` — umbrales para tests de robustez.
 
-# Run type checker
-mypy backtrader
-```
+## Documentación adicional
 
-## Contributing
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
+- [docs/TECHNICAL_DOCS.md](docs/TECHNICAL_DOCS.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
 
-1. Fork the repository
-2. Create feature branch
-3. Add tests
-4. Update documentation
-5. Submit pull request
+## Aviso
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+Este proyecto es para **educación e investigación**. El trading conlleva riesgos; los resultados pasados en backtest no garantizan resultados futuros. No se ofrece asesoramiento financiero.
 
-## License
+## Licencia
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — ver [LICENSE](LICENSE).
 
-## Acknowledgments
+## Autor
 
-- [XGBoost](https://xgboost.readthedocs.io/) for ML models
-- [pandas](https://pandas.pydata.org/) for data processing
-- [TA-Lib](https://ta-lib.org/) for technical indicators
-- [Binance API](https://binance-docs.github.io/apidocs/) for market data
+- **Luis Klepatzky** — [@luisklepa](https://github.com/luisklepa) — Luisklepa@Thesynaptek.com
 
-## Contact
+## Agradecimientos
 
-- Author: Luis Klepatzky
-- Email: Luisklepa@Thesynaptek.com
-- GitHub: @luisklepa https://github.com/luisklepa)
-
-## Roadmap
-
-### Version 1.1
-- Real-time trading support
-- Additional ML models
-- Enhanced risk metrics
-- Web interface
-
-### Version 1.2
-- Multi-exchange support
-- Portfolio optimization
-- Advanced order types
-- Performance improvements
-
-### Version 2.0
-- Distributed computing
-- Deep learning models
-- Real-time monitoring
-- Strategy marketplace 
+- [XGBoost](https://xgboost.readthedocs.io/), [scikit-learn](https://scikit-learn.org/), [Backtrader](https://www.backtrader.com/), [TA-Lib](https://ta-lib.org/), [Binance API](https://binance-docs.github.io/apidocs/), [Streamlit](https://streamlit.io/).

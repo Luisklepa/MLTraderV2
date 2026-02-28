@@ -1,20 +1,10 @@
 import backtrader as bt
 import numpy as np
-from utils.trading_utils import calculate_position_size
 from collections import defaultdict
 import pandas as pd
 import logging
-from typing import Dict, Optional, List, Tuple, Any
+from typing import Dict, List, Any
 import yaml
-from pathlib import Path
-from datetime import datetime, timedelta
-
-from utils.sentiment_analysis import MarketSentimentAnalyzer
-from utils.cross_asset_analysis import CrossAssetAnalyzer
-from utils.risk_management import RiskManager
-from utils.ensemble_model import EnsembleModel
-from utils.ml_pipeline import MLPipeline, PipelineConfig
-from utils.data_feed import DataFeed
 import talib
 
 logger = logging.getLogger(__name__)
