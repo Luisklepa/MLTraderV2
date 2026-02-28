@@ -1,13 +1,17 @@
 """
 Backtesting engine with optimization capabilities.
 """
+import logging
+import time
+from dataclasses import dataclass
+from typing import Any, Dict, List, Type
+
 import backtrader as bt
 import pandas as pd
-from typing import Dict, List, Type, Any
-from dataclasses import dataclass
-from config.settings import TradingConfig
-import time
 import plotly.io as pio
+from config.settings import TradingConfig
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class BacktestResult:
@@ -77,14 +81,13 @@ class BacktestEngine:
         date_end = df['open_time'].iloc[-1] if n_bars > 0 else 'N/A'
         symbol = getattr(df, 'symbol', getattr(TradingConfig, 'DEFAULT_SYMBOL', 'BTCUSDT'))
         timeframe = getattr(TradingConfig, 'DEFAULT_TIMEFRAME', '15m')
-        # Mostrar prints solo si printlog está activado
         if strategy_params and strategy_params.get('printlog', False):
-            print("\n================ BACKTEST EJECUTADO ================" )
-        print(f"Símbolo: {symbol}")
-        print(f"Timeframe: {timeframe}")
-        print(f"Velas procesadas: {n_bars}")
-        print(f"Rango de fechas: {date_start}  ->  {date_end}")
-        print(f"Parámetros: {strategy_params if strategy_params else '{}'}")
+            logger.info("================ BACKTEST EJECUTADO ================")
+        logger.info("Símbolo: %s", symbol)
+        logger.info("Timeframe: %s", timeframe)
+        logger.info("Velas procesadas: %d", n_bars)
+        logger.info("Rango de fechas: %s  ->  %s", date_start, date_end)
+        logger.info("Parámetros: %s", strategy_params if strategy_params else '{}')
         # --- FIN DEL INICIO DEL RESUMEN ---
         
         # Run backtest
@@ -95,7 +98,7 @@ class BacktestEngine:
             try:
                 self.plot_friendly_plotly(df, strat)
             except Exception as e:
-                print(f"Error plotting friendly chart: {e}")
+                logger.warning("Error plotting friendly chart: %s", e)
         
         # Extract results
         trade_analysis = strat.analyzers.trades.get_analysis()
@@ -107,20 +110,18 @@ class BacktestEngine:
         total_return = final_value - self.initial_cash
         return_pct = (total_return / self.initial_cash) * 100
         
-        # --- RESUMEN FINAL ---
         elapsed = time.time() - start_time
-        # Mostrar prints solo si printlog está activado
         if strategy_params and strategy_params.get('printlog', False):
-            print("\n================ RESUMEN DEL BACKTEST ================" )
-        print(f"Estrategia: {strategy_class.__name__}")
-        print(f"Valor final: ${final_value:,.2f}")
-        print(f"Retorno total: {return_pct:.2f}%")
-        print(f"Sharpe Ratio: {strat.analyzers.sharpe.get_analysis().get('sharperatio', 0) or 0:.3f}")
-        print(f"Max Drawdown: {strat.analyzers.drawdown.get_analysis().get('max', {}).get('drawdown', 0):.2f}%")
-        print(f"Total Trades: {total_trades}")
-        print(f"Win Rate: {(won_trades / max(1, total_trades)) * 100:.2f}%")
-        print(f"Duración del backtest: {elapsed:.2f} segundos")
-        print("====================================================\n")
+            logger.info("================ RESUMEN DEL BACKTEST ================")
+        logger.info("Estrategia: %s", strategy_class.__name__)
+        logger.info("Valor final: $%,.2f", final_value)
+        logger.info("Retorno total: %.2f%%", return_pct)
+        logger.info("Sharpe Ratio: %.3f", strat.analyzers.sharpe.get_analysis().get('sharperatio', 0) or 0)
+        logger.info("Max Drawdown: %.2f%%", strat.analyzers.drawdown.get_analysis().get('max', {}).get('drawdown', 0))
+        logger.info("Total Trades: %d", total_trades)
+        logger.info("Win Rate: %.2f%%", (won_trades / max(1, total_trades)) * 100)
+        logger.info("Duración del backtest: %.2f segundos", elapsed)
+        logger.info("====================================================")
         # --- FIN DEL RESUMEN FINAL ---
         
         return BacktestResult(
@@ -147,10 +148,10 @@ class BacktestEngine:
                 results.append(result)
                 
                 if i % 10 == 0:
-                    print(f'✓ {i}/{len(param_grid)} combinations tested')
+                    logger.info("%d/%d combinations tested", i, len(param_grid))
                     
             except Exception as e:
-                print(f"Error in combination {i}: {e}")
+                logger.warning("Error in combination %d: %s", i, e)
                 continue
         
         return results
@@ -161,31 +162,31 @@ class BacktestEngine:
         """Compare multiple strategies on the same dataset"""
         results = {}
         for name, strategy_class in strategies.items():
-            print(f"\n--- Ejecutando backtest para: {name} ---")
+            logger.info("--- Ejecutando backtest para: %s ---", name)
             try:
                 result = self.run_backtest(strategy_class, data)
                 results[name] = result
-                print(f"✓ {name} completado")
+                logger.info("%s completado", name)
             except Exception as e:
-                print(f"Error al ejecutar {name}: {e}")
+                logger.warning("Error al ejecutar %s: %s", name, e)
         return results 
 
     def plot_friendly_plotly(self, df, strat):
         """Plot price (candlesticks), equity curve, buy/sell signals in a professional Plotly chart (TradingView style)"""
         pio.renderers.default = 'browser'
-        print("Entrando a plot_friendly_plotly...")
+        logger.debug("Entrando a plot_friendly_plotly...")
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
         import pandas as pd
         # --- Prepare data ---
         df = df.copy()
         df['open_time'] = pd.to_datetime(df['open_time'])
-        print("DF shape:", df.shape)
+        logger.debug("DF shape: %s", df.shape)
         # --- Equity ---
         eq_curve = getattr(strat, 'equity_curve', [])
         eq_df = pd.DataFrame(eq_curve, columns=['datetime', 'equity'])
         eq_df['datetime'] = pd.to_datetime(eq_df['datetime'])
-        print("Equity shape:", eq_df.shape)
+        logger.debug("Equity shape: %s", eq_df.shape)
         # --- Signals ---
         buy_signals = getattr(strat, 'buy_signals', [])
         sell_signals = getattr(strat, 'sell_signals', [])
@@ -196,9 +197,9 @@ class BacktestEngine:
         sell_df['datetime'] = pd.to_datetime(sell_df['datetime'])
         exit_df = pd.DataFrame(exit_signals, columns=['datetime', 'price'])
         exit_df['datetime'] = pd.to_datetime(exit_df['datetime'])
-        print("Buy shape:", buy_df.shape)
-        print("Sell shape:", sell_df.shape)
-        print("Exit shape:", exit_df.shape)
+        logger.debug("Buy shape: %s", buy_df.shape)
+        logger.debug("Sell shape: %s", sell_df.shape)
+        logger.debug("Exit shape: %s", exit_df.shape)
         # --- Volumen ---
         if 'volume' in df.columns:
             volume = df['volume']
@@ -317,9 +318,9 @@ class BacktestEngine:
             )
             # NOTA: Los botones de rango solo cambian el rango visible, no la temporalidad de las velas.
         except Exception as e:
-            print(f"Error en layout Plotly: {e}")
+            logger.warning("Error en layout Plotly: %s", e)
         # --- Mostrar gráfico ---
-        print("Mostrando gráfico Plotly...")
+        logger.debug("Mostrando gráfico Plotly...")
         fig.show(config={
             'scrollZoom': True,
             'displayModeBar': True,

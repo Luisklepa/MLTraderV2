@@ -10,25 +10,13 @@ from typing import Tuple
 import optuna
 
 # --- AGREGADO: Importar el pipeline avanzado ---
-from utils.ml_feature_pipeline import MLFeaturePipeline
+from ml.feature_pipeline import MLFeaturePipeline
+
+from core.logging_config import setup_logging as _setup_centralized_logging
 
 def setup_logging() -> logging.Logger:
-    """Setup logging configuration."""
-    # Remove existing handlers
-    logger = logging.getLogger()
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-    
-    logger.setLevel(logging.INFO)
-    
-    # Console handler
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(message)s')
-    console.setFormatter(formatter)
-    logger.addHandler(console)
-    
-    return logger
+    _setup_centralized_logging()
+    return logging.getLogger(__name__)
 
 def load_data(file_path: str) -> pd.DataFrame:
     """Load and preprocess price data."""

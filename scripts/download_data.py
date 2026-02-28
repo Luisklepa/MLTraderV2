@@ -11,19 +11,12 @@ from datetime import datetime, timedelta
 import logging
 import argparse
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from core.logging_config import setup_logging as _setup_centralized_logging
+
 def setup_logging() -> logging.Logger:
-    """Setup logging configuration."""
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    
-    # Console handler
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(message)s')
-    console.setFormatter(formatter)
-    logger.addHandler(console)
-    
-    return logger
+    _setup_centralized_logging()
+    return logging.getLogger(__name__)
 
 def get_binance_klines(
     symbol: str,

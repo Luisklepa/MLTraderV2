@@ -18,6 +18,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import backtrader as bt
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from core.logging_config import setup_logging
 from tqdm import tqdm
 from colorama import Fore, Style, init
 from rich.console import Console
@@ -479,6 +482,7 @@ def main_menu():
     return opcion
 
 if __name__ == "__main__":
+    setup_logging()
     while True:
         opcion = main_menu()
         if opcion.startswith("1"):

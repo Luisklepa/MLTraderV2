@@ -1,10 +1,14 @@
+import sys
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import backtrader as bt
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from core.logging_config import setup_logging
 from strategies.ml_strategy import MLStrategy
-from utils.data_feed import prepare_data, MLSignalData
-from utils.robustness_metrics import (
+from core.data_feed import prepare_data, MLSignalData
+from backtest.robustness_metrics import (
     calculate_robustness_metrics,
     calculate_monte_carlo_metrics,
     calculate_regime_metrics,
@@ -13,7 +17,6 @@ from utils.robustness_metrics import (
 from config.robustness_config import RobustnessConfig
 import json
 import os
-from pathlib import Path
 from typing import Dict, List, Any
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -335,4 +338,5 @@ def run_robustness_analysis():
     print(f"\nResults saved to: {output_dir}")
 
 if __name__ == '__main__':
+    setup_logging()
     run_robustness_analysis() 

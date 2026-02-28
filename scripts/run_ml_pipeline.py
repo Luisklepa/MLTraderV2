@@ -13,33 +13,8 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from utils.ml_pipeline import MLPipeline, PipelineConfig
-
-def setup_logging(output_dir: Path) -> logging.Logger:
-    """Setup logging configuration."""
-    # Create output directory
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Configure logging
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    
-    # Console handler
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(logging.INFO)
-    console_formatter = logging.Formatter('%(message)s')
-    console.setFormatter(console_formatter)
-    logger.addHandler(console)
-    
-    # File handler
-    log_file = output_dir / f'pipeline_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.DEBUG)
-    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(file_formatter)
-    logger.addHandler(file_handler)
-    
-    return logger
+from ml.pipeline import MLPipeline, PipelineConfig
+from core.logging_config import setup_logging as _setup_centralized_logging
 
 def load_data(file_path: str) -> pd.DataFrame:
     """Load and preprocess data."""
@@ -150,7 +125,9 @@ def main():
     
     # Setup output directory and logging
     output_dir = Path(args.output_dir)
-    logger = setup_logging(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    _setup_centralized_logging()
+    logger = logging.getLogger(__name__)
     
     try:
         # Load configuration

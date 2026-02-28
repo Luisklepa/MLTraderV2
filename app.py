@@ -1,16 +1,20 @@
+import logging
+from core.logging_config import setup_logging
+setup_logging()
+
 import streamlit as st
 import pandas as pd
 import joblib
 import os
 import sys
-from utils.model_optimization import ModelOptimizer
+from ml.model_optimization import ModelOptimizer
 import subprocess
 import glob
 import xgboost as xgb
 from sklearn.metrics import classification_report, confusion_matrix
-from utils.walk_forward import WalkForwardAnalyzer
-from utils.visualization import plot_backtest_results
-from utils.robustness_metrics import calculate_robustness_metrics
+from backtest.walk_forward import WalkForwardAnalyzer
+from backtest.visualization import plot_backtest_results
+from backtest.robustness_metrics import calculate_robustness_metrics
 import json
 from pathlib import Path
 
@@ -65,7 +69,8 @@ try:
         n_features_max = max(5, min(50, df_temp.select_dtypes(include=["number"]).shape[1] - 2))  # -2 por los targets
     else:
         n_features_max = 50
-except Exception:
+except Exception as e:
+    logging.getLogger(__name__).warning("Could not determine max features dynamically: %s", e)
     n_features_max = 50
 min_feature_importance = st.sidebar.number_input("Min feature importance", 0.0, 0.1, 0.01, 0.001)
 max_features = st.sidebar.number_input("Max features", 1, n_features_max, min(50, n_features_max), 1)

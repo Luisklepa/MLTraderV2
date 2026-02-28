@@ -1,3 +1,4 @@
+import sys
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -8,7 +9,9 @@ from typing import Dict, Any, List
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from utils.walk_forward import WalkForwardAnalyzer
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from core.logging_config import setup_logging
+from backtest.walk_forward import WalkForwardAnalyzer
 from config.settings import TradingConfig
 from config.walk_forward_config import WalkForwardConfig
 
@@ -250,4 +253,5 @@ def main():
     print(f"\nResults saved to: {output_dir}")
 
 if __name__ == '__main__':
+    setup_logging()
     main() 

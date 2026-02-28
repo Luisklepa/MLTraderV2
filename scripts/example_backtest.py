@@ -4,17 +4,21 @@ Script para ejecutar un ejemplo simple de backtesting.
 """
 import argparse
 import logging
+import sys
 import yaml
 from pathlib import Path
 import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
 
-from strategies.ml_strategy import EnhancedMLStrategy
-from utils.data_feed import DataFeed
-from utils.visualization import plot_backtest_results
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from core.logging_config import setup_logging
+setup_logging()
 
-logging.basicConfig(level=logging.INFO)
+from strategies.ml_strategy import EnhancedMLStrategy
+from core.data_feed import DataFeed
+from backtest.visualization import plot_backtest_results
+
 logger = logging.getLogger(__name__)
 
 def run_backtest(config_path: str, start_date: str, end_date: str, output_dir: str):
