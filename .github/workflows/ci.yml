@@ -24,7 +24,11 @@ jobs:
     - name: Install TA-Lib system dependency
       run: |
         sudo apt-get update
-        sudo apt-get install -y libta-lib-dev
+        sudo apt-get install -y build-essential wget
+        wget -q https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-src.tar.gz
+        tar -xzf ta-lib-0.6.4-src.tar.gz
+        cd ta-lib && ./configure --prefix=/usr && make -j$(nproc) && sudo make install && cd ..
+        sudo ldconfig
 
     - name: Install dependencies
       run: |
