@@ -66,6 +66,11 @@ logs/
 *.jpeg
 *.gif
 *.pdf
+# Exception: track screenshots in docs/images for README / GitHub
+!docs/images/
+!docs/images/*.png
+!docs/images/*.jpg
+!docs/images/*.jpeg
 
 # Distribution
 *.pot

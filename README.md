@@ -1,5 +1,11 @@
 # MLTraderV2 — ML-Powered Cryptocurrency Trading System
 
+[![CI](https://github.com/Luisklepa/MLTraderV2/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Luisklepa/MLTraderV2/actions)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**Versión:** 0.1.0 — Ver [CHANGELOG.md](CHANGELOG.md) para el historial de cambios.
+
 Sistema de trading con machine learning para criptomonedas (Binance). Incluye pipeline de features, modelos XGBoost long/short, backtesting con Backtrader, walk-forward analysis, gestión de riesgo y una app Streamlit para entrenar y evaluar.
 
 ```mermaid
@@ -11,6 +17,30 @@ graph TD
     E --> F[Backtest / Walk-Forward]
     F --> G[Risk & Results]
 ```
+
+## Quick start (3 pasos)
+
+```bash
+git clone https://github.com/Luisklepa/MLTraderV2.git && cd MLTraderV2
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Abre `http://localhost:8501`. En Windows/Linux puede ser necesario instalar [TA-Lib](https://ta-lib.org/) según tu SO. Opcional: copia `.env.example` a `.env` si vas a usar API de Binance.
+
+## Demo
+
+La app Streamlit permite cargar configuración, entrenar modelos, ejecutar walk-forward y simular trading desde el navegador.
+
+| Crear dataset y selección | Entrenamiento y validación |
+|---------------------------|----------------------------|
+| ![Crear dataset](docs/images/Screenshot_28-2-2026_181928_localhost.jpeg) | ![Entrenamiento](docs/images/Screenshot_28-2-2026_181954_localhost.jpeg) |
+
+| Walk-Forward y resultados | Simulación de trading |
+|---------------------------|------------------------|
+| ![Walk-Forward](docs/images/Screenshot_28-2-2026_182020_localhost.jpeg) | ![Simulación](docs/images/Screenshot_28-2-2026_18208_localhost.jpeg) |
+
+*(Ejecuta `streamlit run app.py` y abre `http://localhost:8501`.)*
 
 ## Características
 
@@ -104,7 +134,7 @@ python -m ml.train_model
 ### Pipeline ML (config YAML)
 
 ```bash
-python scripts/run_ml_pipeline.py --config config/ml_pipeline_config.yaml --output-dir results/
+python scripts/run_ml_pipeline.py --config config/ml_pipeline_config.yaml --data-file data/btcusdt_ml_dataset.csv --output-dir results/
 ```
 
 ### Backtest con estrategia ML
@@ -122,7 +152,7 @@ python scripts/run_walk_forward.py
 ### Descargar datos Binance
 
 ```bash
-python scripts/download_data.py --symbol BTCUSDT --interval 15m --output data/btcusdt_prices.csv
+python scripts/download_data.py --symbol BTCUSDT --interval 15m --output-file data/btcusdt_prices.csv
 ```
 
 ### Health check (diagnóstico)
@@ -138,6 +168,14 @@ docker-compose up --build
 ```
 
 La app queda en `http://localhost:8501`. Volúmenes: `./logs`, `./data`, `./models`. Variables de entorno desde `.env`.
+
+## Troubleshooting
+
+- **`ModuleNotFoundError` al ejecutar scripts o `streamlit run app.py`** — Activa el entorno virtual (`venv\Scripts\activate` en Windows, `source venv/bin/activate` en Linux/macOS) o instala las dependencias en el entorno que uses.
+- **Error al instalar TA-Lib (Windows)** — Usa un wheel precompilado para tu versión de Python (p. ej. desde [repos no oficiales](https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib)) o instala TA-Lib en el sistema y luego `pip install ta-lib`.
+- **Puerto 8501 ya en uso** — Usa `streamlit run app.py --server.port 8502` (u otro puerto libre).
+- **Tests fallan por imports** — Ejecuta desde la raíz del repo: `python -m pytest tests/ -v`.
+- **`FileNotFoundError` para config o datos** — Asegúrate de ejecutar los comandos desde la raíz del proyecto (donde está `app.py` y la carpeta `config/`).
 
 ## Estructura del proyecto
 
@@ -211,15 +249,11 @@ python -m pytest tests/ -v
 python -m pytest tests/ -v --cov=core --cov=ml --cov=backtest --cov=config
 ```
 
-Los entry points (app, scripts, `ml.train_model`, etc.) llaman a `setup_logging()` desde `core.logging_config` para unificar logs.
+Los logs se centralizan desde `core.logging_config`. Ver [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) para más detalle.
 
 ## Configuración relevante
 
-- **Trading/riesgo:** `config/settings.py` — `TradingConfig`, `RiskConfig` (capital, comisión, max drawdown, position sizing).
-- **Datos:** `DataConfig` — símbolo, timeframe, lookback, API Binance.
-- **Pipeline ML:** `config/ml_pipeline_config.yaml` — modelos, features, umbrales.
-- **Walk-forward:** `config/walk_forward_config.py` — tamaños de ventana, gap, métricas.
-- **Robustez:** `config/robustness_config.py` — umbrales para tests de robustez.
+La configuración de trading, datos y modelo vive en `config/settings.py` y en los YAML de `config/` (p. ej. `ml_pipeline_config.yaml`, `trading_config.yaml`). Para más detalle, ver [docs/](docs/).
 
 ## Documentación adicional
 
@@ -227,6 +261,14 @@ Los entry points (app, scripts, `ml.train_model`, etc.) llaman a `setup_logging(
 - [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
 - [docs/TECHNICAL_DOCS.md](docs/TECHNICAL_DOCS.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## Roadmap
+
+- Paper trading (ejecución simulada en tiempo real sin dinero real).
+- Soporte para más activos y timeframes desde la app.
+- Modelo de slippage y costes en el backtest.
+- Detección de régimen de mercado (tendencia / lateral) para filtrar señales.
+- Mejoras de monitoreo (métricas de salud y alertas).
 
 ## Aviso
 
