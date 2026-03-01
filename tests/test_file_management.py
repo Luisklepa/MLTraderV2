@@ -1,8 +1,9 @@
 """Tests for core/file_management.py — file path management."""
+
+from pathlib import Path
+
 import pytest
 import yaml
-import os
-from pathlib import Path
 
 from core.file_management import FileManager
 
@@ -77,6 +78,6 @@ class TestFileManager:
 
     def test_parse_size(self, file_config):
         fm = FileManager(file_config)
-        assert fm._parse_size("1GB") == 1024 ** 3
-        assert fm._parse_size("512MB") == 512 * 1024 ** 2
+        assert fm._parse_size("1GB") == 1024**3
+        assert fm._parse_size("512MB") == 512 * 1024**2
         assert fm._parse_size("1024KB") == 1024 * 1024

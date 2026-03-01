@@ -1,8 +1,9 @@
 """Feature drift detection for production monitoring."""
+
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Tuple
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,11 @@ def calculate_psi(
 def detect_drift(
     reference_df: pd.DataFrame,
     production_df: pd.DataFrame,
-    feature_cols: List[str],
+    feature_cols: list[str],
     psi_threshold: float = 0.25,
     alert_ratio: float = 0.1,
     alert_count: int = 5,
-) -> Dict[str, any]:
+) -> dict[str, any]:
     """Detect feature drift between reference (training) and production data.
 
     Returns a dict with:

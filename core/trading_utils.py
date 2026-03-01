@@ -2,6 +2,7 @@
 Utility functions for trading strategies in Backtrader.
 Centralizes indicators, stops, risk management, and debug printing.
 """
+
 import logging
 from typing import Literal
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 # ================= INDICATORS =================
+
 
 def get_atr(data: bt.feeds.DataBase, period: int = 14) -> bt.indicators.ATR:
     """Return backtrader ATR indicator."""
@@ -28,6 +30,7 @@ def get_rsi(data: bt.feeds.DataBase, period: int = 14) -> bt.indicators.RSI:
 
 
 # ================= STOPS & RISK ================
+
 
 def calculate_stop_loss(
     entry_price: float,

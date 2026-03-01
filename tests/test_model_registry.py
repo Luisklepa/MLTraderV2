@@ -1,13 +1,13 @@
 """Tests for ml/model_registry.py — versioned model storage."""
+
 import json
-import numpy as np
-import pandas as pd
-import pytest
 from pathlib import Path
+
+import pytest
 from sklearn.tree import DecisionTreeClassifier
 
-from ml import model_registry
 from core.exceptions import ModelError
+from ml import model_registry
 
 
 def _make_dummy_model():
@@ -44,6 +44,7 @@ class TestSaveModel:
 
     def test_saves_scaler(self, registry_dir):
         from sklearn.preprocessing import StandardScaler
+
         model = _make_dummy_model()
         scaler = StandardScaler()
         scaler.fit([[1.0], [2.0]])

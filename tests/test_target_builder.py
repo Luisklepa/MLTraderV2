@@ -1,8 +1,7 @@
 """Tests for ml/target_builder.py — dynamic target generation and quality metrics."""
-import numpy as np
+
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 from ml.target_builder import MLTargetBuilder, TargetQualityMetrics
 
@@ -12,12 +11,14 @@ def target_builder_config():
     """Minimal config for MLTargetBuilder."""
     filter_config = {
         "filters": {
-            "volatility": {"enabled": False, "atr_column": "atr_14",
-                           "atr_percentile_min": 0.1, "atr_percentile_max": 0.9},
-            "volume": {"enabled": False, "volume_ratio_column": "volume_ratio",
-                       "volume_ratio_min": 0.5},
-            "trend": {"enabled": False, "ema_fast": 20, "ema_slow": 50,
-                      "min_trend_strength": 0.001},
+            "volatility": {
+                "enabled": False,
+                "atr_column": "atr_14",
+                "atr_percentile_min": 0.1,
+                "atr_percentile_max": 0.9,
+            },
+            "volume": {"enabled": False, "volume_ratio_column": "volume_ratio", "volume_ratio_min": 0.5},
+            "trend": {"enabled": False, "ema_fast": 20, "ema_slow": 50, "min_trend_strength": 0.001},
         },
         "atr_multiplier": 1.0,
         "profit_ratio": 1.0,
@@ -96,7 +97,7 @@ class TestRemoveOverlappingSignals:
 
 class TestTargetQualityMetrics:
     def test_quality_metrics_computed(self, target_builder, df_with_atr):
-        future_returns = target_builder._calculate_future_returns(df_with_atr)
+        target_builder._calculate_future_returns(df_with_atr)
         targets = pd.Series(0, index=df_with_atr.index)
         targets.iloc[10] = 1
         targets.iloc[100] = -1

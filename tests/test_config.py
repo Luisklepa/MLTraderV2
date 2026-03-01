@@ -1,7 +1,8 @@
 """Tests for config/settings.py validation."""
+
 import pytest
-import os
-from config.settings import TradingConfig, RiskConfig, DataConfig, APIConfig
+
+from config.settings import DataConfig, RiskConfig, TradingConfig
 
 
 class TestRiskConfigValidation:

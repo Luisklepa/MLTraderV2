@@ -1,9 +1,8 @@
 """Tests for backtest/engine.py — BacktestResult, BacktestEngine utilities."""
-import numpy as np
-import pandas as pd
+
 import pytest
 
-from backtest.engine import BacktestResult, BacktestEngine
+from backtest.engine import BacktestEngine, BacktestResult
 
 
 class TestBacktestResult:

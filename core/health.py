@@ -3,14 +3,15 @@
 ``check_health()`` returns a dict with component statuses, suitable for
 JSON serialisation as a health endpoint or CLI diagnostic.
 """
+
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def check_health() -> Dict[str, Any]:
+def check_health() -> dict[str, Any]:
     """Run a quick health-check across core subsystems.
 
     Returns a dict::
@@ -20,7 +21,7 @@ def check_health() -> Dict[str, Any]:
             "checks": { <component>: { "ok": bool, "detail": str }, ... }
         }
     """
-    checks: Dict[str, Dict[str, Any]] = {}
+    checks: dict[str, dict[str, Any]] = {}
 
     checks["config"] = _check_config()
     checks["data_dir"] = _check_data_dir()
@@ -40,16 +41,17 @@ def check_health() -> Dict[str, Any]:
     return {"status": status, "checks": checks}
 
 
-def _check_config() -> Dict[str, Any]:
+def _check_config() -> dict[str, Any]:
     try:
         from config.settings import TradingConfig
+
         TradingConfig()
         return {"ok": True, "detail": "Config loads successfully"}
     except Exception as e:
         return {"ok": False, "detail": str(e)}
 
 
-def _check_data_dir() -> Dict[str, Any]:
+def _check_data_dir() -> dict[str, Any]:
     data_dir = Path("data")
     if data_dir.exists() and data_dir.is_dir():
         n_files = len(list(data_dir.rglob("*.csv")))
@@ -57,7 +59,7 @@ def _check_data_dir() -> Dict[str, Any]:
     return {"ok": False, "detail": "data/ directory not found"}
 
 
-def _check_models() -> Dict[str, Any]:
+def _check_models() -> dict[str, Any]:
     models_dir = Path("models")
     if not models_dir.exists():
         return {"ok": False, "detail": "models/ directory not found"}
@@ -68,7 +70,7 @@ def _check_models() -> Dict[str, Any]:
     return {"ok": True, "detail": f"{len(model_files)} model files found"}
 
 
-def _check_logging() -> Dict[str, Any]:
+def _check_logging() -> dict[str, Any]:
     logs_dir = Path("logs")
     if logs_dir.exists():
         return {"ok": True, "detail": "logs/ directory exists"}

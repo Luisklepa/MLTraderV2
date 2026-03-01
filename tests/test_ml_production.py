@@ -1,14 +1,13 @@
 """Tests for FASE 5 production ML utilities."""
-import pytest
+
 import numpy as np
 import pandas as pd
-import tempfile
-import os
+import pytest
 
-from ml.feature_selection import remove_highly_correlated, auto_select_features
-from ml.drift_detection import calculate_psi, detect_drift
 from core.data_validation import validate_ohlcv
 from core.exceptions import DataError
+from ml.drift_detection import calculate_psi, detect_drift
+from ml.feature_selection import remove_highly_correlated
 
 
 class TestFeatureSelection:
@@ -28,11 +27,13 @@ class TestFeatureSelection:
 
     def test_no_removal_when_uncorrelated(self):
         np.random.seed(42)
-        df = pd.DataFrame({
-            "a": np.random.randn(50),
-            "b": np.random.randn(50),
-            "c": np.random.randn(50),
-        })
+        df = pd.DataFrame(
+            {
+                "a": np.random.randn(50),
+                "b": np.random.randn(50),
+                "c": np.random.randn(50),
+            }
+        )
         kept = remove_highly_correlated(df, ["a", "b", "c"], threshold=0.95)
         assert len(kept) == 3
 
@@ -59,24 +60,30 @@ class TestPSI:
 class TestDriftDetection:
     def test_no_drift_on_same_data(self):
         np.random.seed(42)
-        df = pd.DataFrame({
-            "f1": np.random.randn(500),
-            "f2": np.random.randn(500),
-        })
+        df = pd.DataFrame(
+            {
+                "f1": np.random.randn(500),
+                "f2": np.random.randn(500),
+            }
+        )
         result = detect_drift(df, df, ["f1", "f2"])
         assert result["alert"] is False
         assert len(result["drifted_features"]) == 0
 
     def test_drift_detected_on_shifted_data(self):
         np.random.seed(42)
-        ref = pd.DataFrame({
-            "f1": np.random.randn(500),
-            "f2": np.random.randn(500),
-        })
-        prod = pd.DataFrame({
-            "f1": np.random.randn(500) + 5.0,
-            "f2": np.random.randn(500) + 5.0,
-        })
+        ref = pd.DataFrame(
+            {
+                "f1": np.random.randn(500),
+                "f2": np.random.randn(500),
+            }
+        )
+        prod = pd.DataFrame(
+            {
+                "f1": np.random.randn(500) + 5.0,
+                "f2": np.random.randn(500) + 5.0,
+            }
+        )
         result = detect_drift(ref, prod, ["f1", "f2"])
         assert len(result["drifted_features"]) > 0
 
@@ -96,23 +103,27 @@ class TestDataValidation:
             validate_ohlcv(df)
 
     def test_negative_close_dropped(self):
-        df = pd.DataFrame({
-            "open": [100, -1, 102],
-            "high": [101, 0, 103],
-            "low": [99, -2, 101],
-            "close": [100, -1, 102],
-            "volume": [10, 10, 10],
-        })
+        df = pd.DataFrame(
+            {
+                "open": [100, -1, 102],
+                "high": [101, 0, 103],
+                "low": [99, -2, 101],
+                "close": [100, -1, 102],
+                "volume": [10, 10, 10],
+            }
+        )
         result = validate_ohlcv(df)
         assert len(result) == 2
 
     def test_high_low_swap_fixed(self):
-        df = pd.DataFrame({
-            "open": [100],
-            "high": [99],   # intentionally swapped
-            "low": [101],   # intentionally swapped
-            "close": [100],
-            "volume": [10],
-        })
+        df = pd.DataFrame(
+            {
+                "open": [100],
+                "high": [99],  # intentionally swapped
+                "low": [101],  # intentionally swapped
+                "close": [100],
+                "volume": [10],
+            }
+        )
         result = validate_ohlcv(df)
         assert result["high"].iloc[0] >= result["low"].iloc[0]

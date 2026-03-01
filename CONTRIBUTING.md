@@ -1,4 +1,4 @@
-# Contributing to ML Trading System
+# Contributing to MLTraderV2
 
 We love your input! We want to make contributing to this project as easy and transparent as possible, whether it's:
 
@@ -33,25 +33,27 @@ We use the following code style conventions:
 ## Project Structure
 
 ```
-├── analysis/              # Analysis tools and scripts
-├── backtest/             # Backtesting engine
-├── config/               # Configuration files
-├── data/                 # Data storage
-├── indicators/           # Technical indicators
-├── models/              # Model storage
-├── scripts/             # Main execution scripts
-├── strategies/          # Trading strategies
-├── tests/              # Unit tests
-└── utils/              # Utility functions
+├── app.py                 # Streamlit app
+├── core/                  # Logging, health, data fetcher, data feed, file management
+├── ml/                    # Feature pipeline, target builder, pipeline, train_model, model_registry, signal_filter
+├── backtest/              # Engine (Backtrader), walk_forward, robustness_metrics, visualization, event_engine
+├── config/                # settings.py, YAML configs (trading, ml_pipeline, walk_forward, robustness)
+├── strategies/            # Backtrader strategies (ml_strategy.py)
+├── scripts/               # run_ml_pipeline, run_ml_backtest, run_walk_forward, download_data, prepare_ml_dataset, analysis/
+├── tests/                 # Pytest tests
+├── docs/                  # ARCHITECTURE.md, DEVELOPER_GUIDE.md, TECHNICAL_DOCS.md, API.md, images/
+├── requirements.txt
+├── requirements-dev.txt
+└── pyproject.toml
 ```
 
 ## Setting Up Development Environment
 
 1. Create a virtual environment:
 ```bash
-python -m venv venv311
-source venv311/bin/activate  # Linux/Mac
-venv311\\Scripts\\activate   # Windows
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate    # Windows
 ```
 
 2. Install dependencies:
@@ -60,22 +62,26 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt  # Development dependencies
 ```
 
-3. Install pre-commit hooks:
+3. Install pre-commit hooks (optional):
 ```bash
 pre-commit install
 ```
 
+CI runs [Ruff](https://docs.astral.sh/ruff/) for linting and formatting (`ruff check .`, `ruff format --check .`). See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
 ## Running Tests
 
+Run from the project root (where `app.py` and `config/` live):
+
 ```bash
-# Run all tests
-pytest
+# All tests
+python -m pytest tests/ -v
 
-# Run specific test file
-pytest tests/test_ml_pipeline.py
+# With coverage
+python -m pytest tests/ -v --cov=core --cov=ml --cov=backtest --cov=config
 
-# Run with coverage report
-pytest --cov=./ tests/
+# Single file
+python -m pytest tests/test_feature_pipeline.py -v
 ```
 
 ## Documentation

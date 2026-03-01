@@ -1,9 +1,10 @@
 """Tests for core/data_fetcher.py — Binance data fetcher with caching and rate limiting."""
+
 import time
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
-import pytest
-from unittest.mock import patch, MagicMock
 
 from core.data_fetcher import BinanceDataFetcher, _CacheEntry
 
@@ -67,10 +68,34 @@ class TestCacheEviction:
 class TestProcessKlines:
     def test_processes_valid_klines(self):
         klines = [
-            [1704067200000, "50000", "50100", "49900", "50050", "100",
-             1704067259999, "5000000", 50, "50", "2500000", "0"],
-            [1704067260000, "50050", "50150", "49950", "50100", "150",
-             1704067319999, "7500000", 75, "75", "3750000", "0"],
+            [
+                1704067200000,
+                "50000",
+                "50100",
+                "49900",
+                "50050",
+                "100",
+                1704067259999,
+                "5000000",
+                50,
+                "50",
+                "2500000",
+                "0",
+            ],
+            [
+                1704067260000,
+                "50050",
+                "50150",
+                "49950",
+                "50100",
+                "150",
+                1704067319999,
+                "7500000",
+                75,
+                "75",
+                "3750000",
+                "0",
+            ],
         ]
         df = BinanceDataFetcher._process_klines(klines)
         assert len(df) == 2
@@ -79,10 +104,34 @@ class TestProcessKlines:
 
     def test_drops_nan_rows(self):
         klines = [
-            [1704067200000, "50000", "50100", "49900", "invalid", "100",
-             1704067259999, "5000000", 50, "50", "2500000", "0"],
-            [1704067260000, "50050", "50150", "49950", "50100", "150",
-             1704067319999, "7500000", 75, "75", "3750000", "0"],
+            [
+                1704067200000,
+                "50000",
+                "50100",
+                "49900",
+                "invalid",
+                "100",
+                1704067259999,
+                "5000000",
+                50,
+                "50",
+                "2500000",
+                "0",
+            ],
+            [
+                1704067260000,
+                "50050",
+                "50150",
+                "49950",
+                "50100",
+                "150",
+                1704067319999,
+                "7500000",
+                75,
+                "75",
+                "3750000",
+                "0",
+            ],
         ]
         df = BinanceDataFetcher._process_klines(klines)
         assert len(df) == 1
@@ -92,14 +141,16 @@ class TestGetKlines:
     @patch("core.data_fetcher.requests.get")
     def test_returns_cached_data(self, mock_get):
         fetcher = BinanceDataFetcher()
-        cached_df = pd.DataFrame({
-            "open_time": pd.to_datetime(["2024-01-01"]),
-            "open": [50000.0],
-            "high": [50100.0],
-            "low": [49900.0],
-            "close": [50050.0],
-            "volume": [100.0],
-        })
+        cached_df = pd.DataFrame(
+            {
+                "open_time": pd.to_datetime(["2024-01-01"]),
+                "open": [50000.0],
+                "high": [50100.0],
+                "low": [49900.0],
+                "close": [50050.0],
+                "volume": [100.0],
+            }
+        )
         fetcher._cache[("BTCUSDT", "15m", 3000)] = _CacheEntry(cached_df)
 
         result = fetcher.get_klines("BTCUSDT", "15m", 3000)
@@ -110,6 +161,7 @@ class TestGetKlines:
     @patch("core.data_fetcher.requests.get")
     def test_returns_none_on_failure(self, mock_get):
         import requests
+
         mock_get.side_effect = requests.RequestException("Connection error")
 
         fetcher = BinanceDataFetcher()

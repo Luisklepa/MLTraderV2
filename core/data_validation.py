@@ -1,8 +1,9 @@
 """Data validation utilities for OHLCV DataFrames."""
-import pandas as pd
-import numpy as np
+
 import logging
-from typing import Optional
+
+import numpy as np
+import pandas as pd
 
 from core.exceptions import DataError
 
@@ -13,7 +14,7 @@ REQUIRED_OHLCV_COLUMNS = ["open", "high", "low", "close", "volume"]
 
 def validate_ohlcv(
     df: pd.DataFrame,
-    timeframe_seconds: Optional[float] = None,
+    timeframe_seconds: float | None = None,
     max_gap_factor: float = 2.5,
 ) -> pd.DataFrame:
     """Validate an OHLCV DataFrame and return a cleaned copy.
@@ -56,16 +57,14 @@ def validate_ohlcv(
         logger.warning(f"Fixing {n_bad} rows where high < low (swapping)")
         df.loc[hl_violations, ["high", "low"]] = df.loc[hl_violations, ["low", "high"]].values
 
-    if timeframe_seconds and hasattr(df.index, 'freq'):
+    if timeframe_seconds and hasattr(df.index, "freq"):
         idx = pd.to_datetime(df.index)
         gaps = np.diff(idx.values).astype("timedelta64[s]").astype(float)
         max_allowed = timeframe_seconds * max_gap_factor
         large_gaps = gaps > max_allowed
         if large_gaps.any():
             n_gaps = large_gaps.sum()
-            logger.warning(
-                f"Found {n_gaps} time gaps exceeding {max_gap_factor}x the timeframe"
-            )
+            logger.warning(f"Found {n_gaps} time gaps exceeding {max_gap_factor}x the timeframe")
 
     if df.empty:
         raise DataError("DataFrame is empty after validation")

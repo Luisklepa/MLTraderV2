@@ -1,10 +1,11 @@
 """Tests for ml/model_optimization.py — ModelOptimizer."""
+
 import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 import xgboost as xgb
 
 from ml.model_optimization import ModelOptimizer
@@ -45,7 +46,7 @@ class TestModelOptimizerInit:
         assert optimizer.model_dir.exists()
 
     def test_model_dir_created(self, opt_config):
-        opt = ModelOptimizer(opt_config)
+        ModelOptimizer(opt_config)
         assert Path(opt_config["model_dir"]).exists()
 
 
@@ -75,23 +76,31 @@ class TestHyperparameterOptimization:
     def test_best_params_contain_expected_keys(self, optimizer, classification_data):
         X, y = classification_data
         result = optimizer.optimize_hyperparameters(X, y)
-        expected_keys = {"n_estimators", "max_depth", "learning_rate", "subsample",
-                         "colsample_bytree", "min_child_weight", "gamma",
-                         "reg_alpha", "reg_lambda"}
+        expected_keys = {
+            "n_estimators",
+            "max_depth",
+            "learning_rate",
+            "subsample",
+            "colsample_bytree",
+            "min_child_weight",
+            "gamma",
+            "reg_alpha",
+            "reg_lambda",
+        }
         assert expected_keys == set(result["best_params"].keys())
 
 
 class TestModelDrift:
     def test_no_drift_without_history(self, optimizer, classification_data):
         X, y = classification_data
-        model = xgb.XGBClassifier(n_estimators=10, use_label_encoder=False, eval_metric="logloss")
+        model = xgb.XGBClassifier(n_estimators=10, eval_metric="logloss")
         model.fit(X, y)
         drifted = optimizer.evaluate_model_drift(model, X, y)
         assert drifted is False
 
     def test_drift_detected_with_degraded_history(self, optimizer, classification_data):
         X, y = classification_data
-        model = xgb.XGBClassifier(n_estimators=10, use_label_encoder=False, eval_metric="logloss")
+        model = xgb.XGBClassifier(n_estimators=10, eval_metric="logloss")
         model.fit(X, y)
 
         metrics_file = optimizer.model_dir / "historical_metrics.json"
@@ -106,14 +115,14 @@ class TestModelDrift:
 class TestSaveLoad:
     def test_save_and_load_model(self, optimizer, classification_data):
         X, y = classification_data
-        model = xgb.XGBClassifier(n_estimators=10, use_label_encoder=False, eval_metric="logloss")
+        model = xgb.XGBClassifier(n_estimators=10, eval_metric="logloss")
         model.fit(X, y)
         features = list(X.columns)
         metrics = {"f1": 0.75, "auc": 0.80}
 
         optimizer.save_model(model, features, metrics)
 
-        loaded_model, loaded_features, loaded_metrics = optimizer.load_latest_model()
+        loaded_model, loaded_features, loaded_metrics, loaded_threshold = optimizer.load_latest_model()
         assert loaded_features == features
         assert loaded_metrics["f1"] == 0.75
 
@@ -150,7 +159,7 @@ class TestSaveMetrics:
 class TestFeatureImportance:
     def test_returns_sorted_dataframe(self, optimizer, classification_data):
         X, y = classification_data
-        model = xgb.XGBClassifier(n_estimators=10, use_label_encoder=False, eval_metric="logloss")
+        model = xgb.XGBClassifier(n_estimators=10, eval_metric="logloss")
         model.fit(X, y)
         importance_df = optimizer.analyze_feature_importance(model, list(X.columns))
         assert "feature" in importance_df.columns

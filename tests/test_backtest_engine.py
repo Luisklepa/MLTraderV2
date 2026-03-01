@@ -1,9 +1,9 @@
 """Tests for the BacktestEngine in backtest/event_engine.py."""
-import pytest
+
+from datetime import datetime
+
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock
+import pytest
 
 from backtest.event_engine import BacktestEngine, Position
 from tests.conftest import DummyStrategy
@@ -137,9 +137,13 @@ class TestStopLossAndTakeProfit:
         engine.current_time = sample_ohlcv.index[0]
 
         pos = Position(
-            symbol="BTC", type="long", size=1.0,
-            entry_price=50000.0, entry_time=engine.current_time,
-            stop_loss=49000.0, take_profit=52000.0,
+            symbol="BTC",
+            type="long",
+            size=1.0,
+            entry_price=50000.0,
+            entry_time=engine.current_time,
+            stop_loss=49000.0,
+            take_profit=52000.0,
         )
         engine.positions["BTC"] = pos
 
@@ -154,9 +158,13 @@ class TestStopLossAndTakeProfit:
         engine.current_time = sample_ohlcv.index[0]
 
         pos = Position(
-            symbol="BTC", type="long", size=1.0,
-            entry_price=50000.0, entry_time=engine.current_time,
-            stop_loss=49000.0, take_profit=52000.0,
+            symbol="BTC",
+            type="long",
+            size=1.0,
+            entry_price=50000.0,
+            entry_time=engine.current_time,
+            stop_loss=49000.0,
+            take_profit=52000.0,
         )
         engine.positions["BTC"] = pos
 
@@ -170,9 +178,13 @@ class TestStopLossAndTakeProfit:
         engine.current_time = sample_ohlcv.index[0]
 
         pos = Position(
-            symbol="BTC", type="short", size=1.0,
-            entry_price=50000.0, entry_time=engine.current_time,
-            stop_loss=51000.0, take_profit=48000.0,
+            symbol="BTC",
+            type="short",
+            size=1.0,
+            entry_price=50000.0,
+            entry_time=engine.current_time,
+            stop_loss=51000.0,
+            take_profit=48000.0,
         )
         engine.positions["BTC"] = pos
 
@@ -186,9 +198,13 @@ class TestStopLossAndTakeProfit:
         engine.current_time = sample_ohlcv.index[0]
 
         pos = Position(
-            symbol="BTC", type="long", size=1.0,
-            entry_price=50000.0, entry_time=engine.current_time,
-            stop_loss=40000.0, take_profit=60000.0,
+            symbol="BTC",
+            type="long",
+            size=1.0,
+            entry_price=50000.0,
+            entry_time=engine.current_time,
+            stop_loss=40000.0,
+            take_profit=60000.0,
         )
         engine.positions["BTC"] = pos
 
@@ -211,7 +227,7 @@ class TestNextBarExecution:
         }
         strategy = DummyStrategy(signals)
         engine = BacktestEngine(strategy, sample_ohlcv.iloc[:5], {}, backtest_config)
-        results = engine.run()
+        engine.run()
 
         buy_trades = [t for t in engine.trades if t["type"] == "buy"]
         assert len(buy_trades) >= 1

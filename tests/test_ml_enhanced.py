@@ -4,13 +4,13 @@
 - Configurable drift thresholds
 - Robustness metrics finite values
 """
-import pytest
+
 import numpy as np
 import pandas as pd
 
-from ml.feature_selection import remove_highly_correlated, auto_select_features
-from ml.drift_detection import calculate_psi, detect_drift
 from backtest.robustness_metrics import calculate_robustness_metrics, calculate_robustness_score
+from ml.drift_detection import calculate_psi, detect_drift
+from ml.feature_selection import remove_highly_correlated
 
 
 class TestImportanceAwareCorrelation:
@@ -18,15 +18,19 @@ class TestImportanceAwareCorrelation:
         np.random.seed(42)
         n = 200
         base = np.random.randn(n)
-        df = pd.DataFrame({
-            "important": base,
-            "redundant": base + np.random.randn(n) * 0.01,
-            "independent": np.random.randn(n),
-        })
+        df = pd.DataFrame(
+            {
+                "important": base,
+                "redundant": base + np.random.randn(n) * 0.01,
+                "independent": np.random.randn(n),
+            }
+        )
         importance = pd.Series({"important": 0.8, "redundant": 0.1, "independent": 0.5})
         kept = remove_highly_correlated(
-            df, ["important", "redundant", "independent"],
-            threshold=0.95, importance=importance,
+            df,
+            ["important", "redundant", "independent"],
+            threshold=0.95,
+            importance=importance,
         )
         assert "important" in kept
         assert "redundant" not in kept
@@ -36,10 +40,12 @@ class TestImportanceAwareCorrelation:
         np.random.seed(42)
         n = 200
         base = np.random.randn(n)
-        df = pd.DataFrame({
-            "a": base,
-            "b": base + np.random.randn(n) * 0.01,
-        })
+        df = pd.DataFrame(
+            {
+                "a": base,
+                "b": base + np.random.randn(n) * 0.01,
+            }
+        )
         kept = remove_highly_correlated(df, ["a", "b"], threshold=0.95)
         assert "b" not in kept or "a" not in kept
         assert len(kept) == 1
@@ -98,8 +104,14 @@ class TestRobustnessFiniteValues:
 
     def test_zero_mean_returns_bounded_cv(self):
         results = [
-            {"pnl_total": 0.0, "win_rate": 0.5, "total_trades": 10,
-             "max_drawdown": -0.1, "long_win_rate": 0.5, "short_win_rate": 0.5}
+            {
+                "pnl_total": 0.0,
+                "win_rate": 0.5,
+                "total_trades": 10,
+                "max_drawdown": -0.1,
+                "long_win_rate": 0.5,
+                "short_win_rate": 0.5,
+            }
         ] * 3
         metrics = calculate_robustness_metrics(results)
         assert metrics["return_cv"] == 10.0

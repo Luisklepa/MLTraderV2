@@ -4,16 +4,13 @@ Unified feature engineering pipeline for ML trading strategies.
 Single source of truth for all feature generation — avoids duplication
 across technical_indicators.py, statistical_features.py, and pipeline.py.
 """
+
 import logging
 import warnings
-from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from ta.momentum import RSIIndicator
-from ta.volatility import AverageTrueRange, BollingerBands
-from ta.trend import MACD
 
 warnings.filterwarnings("ignore")
 
@@ -22,9 +19,7 @@ logger = logging.getLogger(__name__)
 try:
     import talib
 except ImportError as e:
-    raise ImportError(
-        "Could not import 'talib'. Make sure TA-Lib is installed in your venv."
-    ) from e
+    raise ImportError("Could not import 'talib'. Make sure TA-Lib is installed in your venv.") from e
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +58,7 @@ def _rolling_slope(series: pd.Series, window: int) -> pd.Series:
 # =========================================================================
 #  Standalone feature-group generators (no class needed)
 # =========================================================================
+
 
 def add_price_features(df: pd.DataFrame) -> pd.DataFrame:
     """Basic price and return features."""
@@ -160,9 +156,7 @@ def add_volatility_features(df: pd.DataFrame) -> pd.DataFrame:
     df["true_range"] = talib.TRANGE(high, low, close)
     df["intraday_range"] = _safe_div(df["high"] - df["low"], df["close"])
     df["vol_of_vol_20"] = df["volatility_20"].rolling(20).std()
-    df["volatility_custom_10"] = _safe_div(
-        df["close"].rolling(10).std(), df["close"].rolling(10).mean()
-    )
+    df["volatility_custom_10"] = _safe_div(df["close"].rolling(10).std(), df["close"].rolling(10).mean())
 
     # Percentile ranks (vectorized, no lambda)
     df["atr_14_pctrank_20"] = _rolling_pct_rank(df["atr_14"], 20)
@@ -181,21 +175,21 @@ def add_volatility_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_pattern_features(df: pd.DataFrame) -> pd.DataFrame:
     """Candlestick patterns and candle anatomy."""
-    o, h, l, c = df["open"].values, df["high"].values, df["low"].values, df["close"].values
-
-    df["doji"] = talib.CDLDOJI(o, h, l, c)
-    df["hammer"] = talib.CDLHAMMER(o, h, l, c)
-    df["engulfing"] = talib.CDLENGULFING(o, h, l, c)
-    df["morning_star"] = talib.CDLMORNINGSTAR(o, h, l, c)
-    df["evening_star"] = talib.CDLEVENINGSTAR(o, h, l, c)
+    o, h, low_vals, c = (
+        df["open"].values,
+        df["high"].values,
+        df["low"].values,
+        df["close"].values,
+    )
+    df["doji"] = talib.CDLDOJI(o, h, low_vals, c)
+    df["hammer"] = talib.CDLHAMMER(o, h, low_vals, c)
+    df["engulfing"] = talib.CDLENGULFING(o, h, low_vals, c)
+    df["morning_star"] = talib.CDLMORNINGSTAR(o, h, low_vals, c)
+    df["evening_star"] = talib.CDLEVENINGSTAR(o, h, low_vals, c)
 
     df["body_size"] = _safe_div(np.abs(df["close"] - df["open"]), df["open"])
-    df["upper_shadow"] = _safe_div(
-        df["high"] - np.maximum(df["open"], df["close"]), df["open"]
-    )
-    df["lower_shadow"] = _safe_div(
-        np.minimum(df["open"], df["close"]) - df["low"], df["open"]
-    )
+    df["upper_shadow"] = _safe_div(df["high"] - np.maximum(df["open"], df["close"]), df["open"])
+    df["lower_shadow"] = _safe_div(np.minimum(df["open"], df["close"]) - df["low"], df["open"])
     df["candle_type"] = (df["close"] > df["open"]).astype(int)
 
     return df
@@ -295,9 +289,7 @@ def add_advanced_cross_features(df: pd.DataFrame) -> pd.DataFrame:
 
     if "rsi_14" in df.columns and "volume" in df.columns:
         vol_mean = df["volume"].rolling(20).mean()
-        df["rsi_overbought_spike"] = (
-            (df["rsi_14"] > 70) & (df["volume"] > vol_mean)
-        ).astype(int)
+        df["rsi_overbought_spike"] = ((df["rsi_14"] > 70) & (df["volume"] > vol_mean)).astype(int)
 
     if "close" in df.columns and "open" in df.columns:
         body = df["close"] - df["open"]
@@ -312,11 +304,21 @@ def add_advanced_cross_features(df: pd.DataFrame) -> pd.DataFrame:
         df["vol_jump_flag"] = (df["vol_jump"] > 1.5).astype(int)
 
     # Cleanup
-    cross_cols = [c for c in df.columns if c in [
-        "return1_over_atr14", "ema20_over_ema50", "macd_vol_roc",
-        "rsi_overbought_spike", "wick_to_body_ratio", "rsi_norm_by_atr",
-        "vol_jump", "vol_jump_flag",
-    ]]
+    cross_cols = [
+        c
+        for c in df.columns
+        if c
+        in [
+            "return1_over_atr14",
+            "ema20_over_ema50",
+            "macd_vol_roc",
+            "rsi_overbought_spike",
+            "wick_to_body_ratio",
+            "rsi_norm_by_atr",
+            "vol_jump",
+            "vol_jump_flag",
+        ]
+    ]
     if cross_cols:
         df[cross_cols] = df[cross_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
 
@@ -332,11 +334,7 @@ def add_anti_failure_features(df: pd.DataFrame) -> pd.DataFrame:
         df["atr_squeeze"] = _safe_div(df["atr_14"], df["atr_14"].rolling(50).mean())
 
     if all(c in df.columns for c in ["ema_20", "ema_50", "macd", "rsi_14"]):
-        df["trend_confirm"] = (
-            (df["ema_20"] > df["ema_50"]) &
-            (df["macd"] > 0) &
-            (df["rsi_14"] > 50)
-        ).astype(int)
+        df["trend_confirm"] = ((df["ema_20"] > df["ema_50"]) & (df["macd"] > 0) & (df["rsi_14"] > 50)).astype(int)
 
     if "returns" in df.columns:
         pos = (df["returns"] > 0).astype(int)
@@ -349,7 +347,7 @@ def add_anti_failure_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_lag_features(
     df: pd.DataFrame,
-    lag_periods: Optional[List[int]] = None,
+    lag_periods: list[int] | None = None,
 ) -> pd.DataFrame:
     """Create lagged versions of key features."""
     lag_periods = lag_periods or [1, 2, 3, 5]
@@ -373,17 +371,14 @@ def add_conditional_features(df: pd.DataFrame, target_type: str) -> pd.DataFrame
             df["rsi_above_60"] = (df["rsi_14"] > 60).astype(int)
         if "close" in df.columns and "open" in df.columns:
             df["vol_up_on_green"] = (
-                (df["close"] > df["open"]) &
-                (df["volume"] > df["volume"].rolling(10).mean())
+                (df["close"] > df["open"]) & (df["volume"] > df["volume"].rolling(10).mean())
             ).astype(int)
         if "engulfing" in df.columns:
             df["bullish_engulfing"] = (df["engulfing"] > 0).astype(int)
         if "low_20" in df.columns:
             df["dist_to_support"] = _safe_div(df["close"] - df["low_20"], df["close"])
         if "volatility_20" in df.columns:
-            df["low_volatility"] = (
-                df["volatility_20"] < df["volatility_20"].rolling(20).mean()
-            ).astype(int)
+            df["low_volatility"] = (df["volatility_20"] < df["volatility_20"].rolling(20).mean()).astype(int)
 
     elif target_type == "short":
         if "macd" in df.columns:
@@ -392,17 +387,14 @@ def add_conditional_features(df: pd.DataFrame, target_type: str) -> pd.DataFrame
             df["rsi_below_40"] = (df["rsi_14"] < 40).astype(int)
         if "close" in df.columns and "open" in df.columns:
             df["vol_up_on_red"] = (
-                (df["close"] < df["open"]) &
-                (df["volume"] > df["volume"].rolling(10).mean())
+                (df["close"] < df["open"]) & (df["volume"] > df["volume"].rolling(10).mean())
             ).astype(int)
         if "engulfing" in df.columns:
             df["bearish_engulfing"] = (df["engulfing"] < 0).astype(int)
         if "high_20" in df.columns:
             df["dist_to_resistance"] = _safe_div(df["high_20"] - df["close"], df["close"])
         if "volatility_20" in df.columns:
-            df["high_volatility"] = (
-                df["volatility_20"] > df["volatility_20"].rolling(20).mean()
-            ).astype(int)
+            df["high_volatility"] = (df["volatility_20"] > df["volatility_20"].rolling(20).mean()).astype(int)
 
     return df
 
@@ -412,14 +404,29 @@ def add_conditional_features(df: pd.DataFrame, target_type: str) -> pd.DataFrame
 # =========================================================================
 
 # Columns that are NEVER features (targets, identifiers, raw OHLCV)
-_EXCLUDE_COLS = frozenset([
-    "target", "target_long", "target_short",
-    "future_return", "future_return_long", "future_return_short",
-    "future_max", "ema_vs_fut_return5",
-    "position", "position_long", "position_short",
-    "datetime", "timestamp", "open_time",
-    "open", "high", "low", "close", "volume",
-])
+_EXCLUDE_COLS = frozenset(
+    [
+        "target",
+        "target_long",
+        "target_short",
+        "future_return",
+        "future_return_long",
+        "future_return_short",
+        "future_max",
+        "ema_vs_fut_return5",
+        "position",
+        "position_long",
+        "position_short",
+        "datetime",
+        "timestamp",
+        "open_time",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+    ]
+)
 
 
 class MLFeaturePipeline:
@@ -428,8 +435,8 @@ class MLFeaturePipeline:
     def __init__(self, target_profit_pct: float = 2.0, target_bars: int = 10):
         self.target_profit_pct = target_profit_pct
         self.target_bars = target_bars
-        self.scaler: Optional[StandardScaler] = None
-        self.feature_columns: Optional[List[str]] = None
+        self.scaler: StandardScaler | None = None
+        self.feature_columns: list[str] | None = None
 
     # ---- Data loading ----
 
@@ -499,7 +506,7 @@ class MLFeaturePipeline:
     def clean_and_scale_features(
         self,
         df: pd.DataFrame,
-        fit_scaler: Optional[bool] = True,
+        fit_scaler: bool | None = True,
     ) -> pd.DataFrame:
         """Clean inf/NaN and optionally scale features.
 
@@ -556,11 +563,11 @@ class MLFeaturePipeline:
         df[feature_cols] = df[feature_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
 
         self.scaler = StandardScaler()
-        df.iloc[:split_idx, df.columns.get_indexer(feature_cols)] = (
-            self.scaler.fit_transform(df.iloc[:split_idx][feature_cols])
+        df.iloc[:split_idx, df.columns.get_indexer(feature_cols)] = self.scaler.fit_transform(
+            df.iloc[:split_idx][feature_cols]
         )
-        df.iloc[split_idx:, df.columns.get_indexer(feature_cols)] = (
-            self.scaler.transform(df.iloc[split_idx:][feature_cols])
+        df.iloc[split_idx:, df.columns.get_indexer(feature_cols)] = self.scaler.transform(
+            df.iloc[split_idx:][feature_cols]
         )
         self.feature_columns = feature_cols
 
@@ -606,11 +613,11 @@ class MLFeaturePipeline:
 
         split_idx = int(len(df) * 0.8)
         self.scaler = StandardScaler()
-        df.iloc[:split_idx, df.columns.get_indexer(feature_cols)] = (
-            self.scaler.fit_transform(df.iloc[:split_idx][feature_cols])
+        df.iloc[:split_idx, df.columns.get_indexer(feature_cols)] = self.scaler.fit_transform(
+            df.iloc[:split_idx][feature_cols]
         )
-        df.iloc[split_idx:, df.columns.get_indexer(feature_cols)] = (
-            self.scaler.transform(df.iloc[split_idx:][feature_cols])
+        df.iloc[split_idx:, df.columns.get_indexer(feature_cols)] = self.scaler.transform(
+            df.iloc[split_idx:][feature_cols]
         )
         self.feature_columns = feature_cols
 
@@ -623,8 +630,8 @@ def select_important_cross_features(
     target: str,
     train_end_idx: int,
     importance_threshold: float = 0.005,
-    top_n: Optional[int] = None,
-) -> Tuple[pd.DataFrame, List[str]]:
+    top_n: int | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
     """Select important cross features using only TRAINING data.
 
     Args:
@@ -670,6 +677,7 @@ def select_important_cross_features(
 # Ejecutar pipeline
 if __name__ == "__main__":
     from core.logging_config import setup_logging
+
     setup_logging()
     pipeline = MLFeaturePipeline()
     pipeline.generate_complete_dataset(

@@ -1,12 +1,14 @@
 """
 Data fetching utilities with rate limiting and TTL cache.
 """
-import requests
-import pandas as pd
-from typing import Optional, List, Tuple
-from config.settings import TradingConfig
-import time
+
 import logging
+import time
+
+import pandas as pd
+import requests
+
+from config.settings import TradingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class BinanceDataFetcher:
 
     def __init__(self):
         self.config = TradingConfig()
-        self._cache: dict[Tuple, _CacheEntry] = {}
+        self._cache: dict[tuple, _CacheEntry] = {}
         self._last_request_time: float = 0.0
 
     def _rate_limit(self) -> None:
@@ -41,10 +43,7 @@ class BinanceDataFetcher:
     def _evict_stale_cache(self) -> None:
         """Remove expired entries and enforce max cache size."""
         now = time.monotonic()
-        expired = [
-            k for k, v in self._cache.items()
-            if (now - v.timestamp) > self.CACHE_TTL_SECONDS
-        ]
+        expired = [k for k, v in self._cache.items() if (now - v.timestamp) > self.CACHE_TTL_SECONDS]
         for k in expired:
             del self._cache[k]
 
@@ -57,7 +56,7 @@ class BinanceDataFetcher:
         symbol: str = TradingConfig.DEFAULT_SYMBOL,
         interval: str = TradingConfig.DEFAULT_TIMEFRAME,
         limit: int = TradingConfig.MAX_LOOKBACK_BARS,
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """Fetch klines from Binance with caching, rate limiting, and retries."""
         cache_key = (symbol, interval, limit)
 
@@ -66,7 +65,7 @@ class BinanceDataFetcher:
             return self._cache[cache_key].data.copy()
 
         t0 = time.time()
-        klines: List = []
+        klines: list = []
         remaining_limit = limit
         end_time = None
 
@@ -105,13 +104,11 @@ class BinanceDataFetcher:
                     break
 
                 except requests.RequestException as e:
-                    logger.warning(
-                        f"Attempt {attempt + 1}/{self.config.MAX_RETRIES} failed for {symbol}: {e}"
-                    )
+                    logger.warning(f"Attempt {attempt + 1}/{self.config.MAX_RETRIES} failed for {symbol}: {e}")
                     if attempt == self.config.MAX_RETRIES - 1:
                         logger.error(f"Failed to fetch data after {self.config.MAX_RETRIES} attempts")
                         return None
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
 
         if not klines:
             return None
@@ -122,14 +119,23 @@ class BinanceDataFetcher:
         return df
 
     @staticmethod
-    def _process_klines(klines: List) -> pd.DataFrame:
+    def _process_klines(klines: list) -> pd.DataFrame:
         """Process raw klines data into a clean DataFrame."""
         df = pd.DataFrame(
             klines,
             columns=[
-                "open_time", "open", "high", "low", "close", "volume",
-                "close_time", "quote_asset_volume", "number_of_trades",
-                "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume", "ignore",
+                "open_time",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "close_time",
+                "quote_asset_volume",
+                "number_of_trades",
+                "taker_buy_base_asset_volume",
+                "taker_buy_quote_asset_volume",
+                "ignore",
             ],
         )
 

@@ -1,10 +1,8 @@
 """Tests for ml/train_model.py — the ML training module."""
+
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock
-import tempfile
-import os
 
 from ml.train_model import MLTradingTrainer
 
@@ -14,18 +12,20 @@ def sample_dataset(tmp_path):
     """Create a temporary CSV dataset for training tests."""
     np.random.seed(42)
     n = 200
-    df = pd.DataFrame({
-        "feature_a": np.random.randn(n),
-        "feature_b": np.random.randn(n),
-        "feature_c": np.random.randn(n),
-        "target_long": np.random.randint(0, 2, n),
-        "target_short": np.random.randint(0, 2, n),
-        "close": 50000 + np.cumsum(np.random.randn(n) * 100),
-        "open": 50000 + np.cumsum(np.random.randn(n) * 100),
-        "high": 50100 + np.cumsum(np.random.randn(n) * 100),
-        "low": 49900 + np.cumsum(np.random.randn(n) * 100),
-        "volume": np.random.lognormal(10, 1, n),
-    })
+    df = pd.DataFrame(
+        {
+            "feature_a": np.random.randn(n),
+            "feature_b": np.random.randn(n),
+            "feature_c": np.random.randn(n),
+            "target_long": np.random.randint(0, 2, n),
+            "target_short": np.random.randint(0, 2, n),
+            "close": 50000 + np.cumsum(np.random.randn(n) * 100),
+            "open": 50000 + np.cumsum(np.random.randn(n) * 100),
+            "high": 50100 + np.cumsum(np.random.randn(n) * 100),
+            "low": 49900 + np.cumsum(np.random.randn(n) * 100),
+            "volume": np.random.lognormal(10, 1, n),
+        }
+    )
     path = tmp_path / "test_dataset.csv"
     df.to_csv(path, index=False)
     return str(path)
@@ -42,8 +42,7 @@ class TestLoadAndPrepareData:
         )
         X, y_long, y_short = trainer.load_and_prepare_data()
 
-        excluded = {"close", "open", "high", "low", "volume",
-                     "target_long", "target_short"}
+        excluded = {"close", "open", "high", "low", "volume", "target_long", "target_short"}
         for col in excluded:
             assert col not in X.columns, f"{col} should be excluded from features"
 
@@ -60,11 +59,13 @@ class TestLoadAndPrepareData:
         assert X.shape[1] == 3  # feature_a, feature_b, feature_c
 
     def test_nan_rows_dropped(self, tmp_path):
-        df = pd.DataFrame({
-            "feature_a": [1.0, np.nan, 3.0],
-            "target_long": [0, 1, 0],
-            "target_short": [1, 0, 1],
-        })
+        df = pd.DataFrame(
+            {
+                "feature_a": [1.0, np.nan, 3.0],
+                "target_long": [0, 1, 0],
+                "target_short": [1, 0, 1],
+            }
+        )
         path = tmp_path / "nan_dataset.csv"
         df.to_csv(path, index=False)
 

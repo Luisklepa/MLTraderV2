@@ -9,19 +9,19 @@ Decomposed into focused components:
   - SignalGenerator: signal generation with position sizing
   - MLPipeline: orchestrator that ties everything together
 """
+
 import logging
 import random
 from dataclasses import dataclass
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
+import talib
 import xgboost as xgb
 import yaml
-import talib
 from imblearn.over_sampling import SMOTE
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import (
@@ -30,14 +30,12 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     roc_auc_score,
-    roc_curve,
 )
-from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from .technical_indicators import add_all_indicators
 from .statistical_features import add_all_statistical_features
+from .technical_indicators import add_all_indicators
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +44,11 @@ logger = logging.getLogger(__name__)
 #  Configuration
 # =========================================================================
 
+
 @dataclass
 class ModelConfig:
     """Hyperparameters for a single XGBoost model."""
+
     n_estimators: int = 100
     max_depth: int = 3
     learning_rate: float = 0.1
@@ -58,7 +58,7 @@ class ModelConfig:
     gamma: float = 0
     scale_pos_weight: float = 1
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "n_estimators": self.n_estimators,
             "max_depth": self.max_depth,
@@ -75,31 +75,41 @@ class PipelineConfig:
     """Load and expose YAML configuration."""
 
     def __init__(self, config_path: str):
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = yaml.safe_load(f)
         self.model_config = config["model_config"]
         self.features_config = config["features_config"]
         self.data_config = config["data_config"]
 
     @property
-    def long_params(self) -> Dict[str, Any]:
+    def long_params(self) -> dict[str, Any]:
         return self.model_config["ensemble"]["models"][0]["params"]
 
     @property
-    def short_params(self) -> Dict[str, Any]:
+    def short_params(self) -> dict[str, Any]:
         return self.model_config["ensemble"]["models"][0]["params"]
 
     @property
-    def selected_features(self) -> List[str]:
+    def selected_features(self) -> list[str]:
         features = []
         for indicator in self.features_config["technical_indicators"]:
             features.append(indicator["name"])
-        features.extend([
-            "returns_1", "returns_5", "returns_10",
-            "volatility_10", "volatility_20",
-            "zscore_close_20", "zscore_volume_20",
-            "hour", "weekday", "month", "is_weekend", "session_progress",
-        ])
+        features.extend(
+            [
+                "returns_1",
+                "returns_5",
+                "returns_10",
+                "volatility_10",
+                "volatility_20",
+                "zscore_close_20",
+                "zscore_volume_20",
+                "hour",
+                "weekday",
+                "month",
+                "is_weekend",
+                "session_progress",
+            ]
+        )
         return features
 
     @property
@@ -119,6 +129,7 @@ class PipelineConfig:
 #  FeatureEngine — delegates to technical_indicators + statistical_features
 # =========================================================================
 
+
 def _safe_div(a, b, fill: float = 0.0):
     with np.errstate(divide="ignore", invalid="ignore"):
         result = np.where(np.abs(b) < 1e-12, fill, a / b)
@@ -130,7 +141,7 @@ class FeatureEngine:
 
     def __init__(self, config: PipelineConfig):
         self.config = config
-        self._cache: Dict[int, pd.DataFrame] = {}
+        self._cache: dict[int, pd.DataFrame] = {}
 
     def prepare_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """Add all configured technical + statistical features."""
@@ -189,7 +200,8 @@ class FeatureEngine:
                 ratio_col = f"price_ema_{period}_ratio"
                 if ratio_col not in df.columns:
                     df[ratio_col] = pd.Series(
-                        _safe_div(close, df[col].values), index=df.index,
+                        _safe_div(close, df[col].values),
+                        index=df.index,
                     )
 
         if "trend_strength" not in df.columns and "price_ema_20_ratio" in df.columns:
@@ -217,12 +229,15 @@ class FeatureEngine:
             df["volume_ratio"] = pd.Series(_safe_div(volume, vol_sma), index=df.index)
 
         patterns = [
-            talib.CDL3BLACKCROWS, talib.CDL3WHITESOLDIERS,
-            talib.CDLENGULFING, talib.CDLHARAMI,
-            talib.CDLMORNINGSTAR, talib.CDLEVENINGSTAR,
+            talib.CDL3BLACKCROWS,
+            talib.CDL3WHITESOLDIERS,
+            talib.CDLENGULFING,
+            talib.CDLHARAMI,
+            talib.CDLMORNINGSTAR,
+            talib.CDLEVENINGSTAR,
         ]
         for func in patterns:
-            name = f'pattern_{func.__name__.replace("CDL", "").lower()}'
+            name = f"pattern_{func.__name__.replace('CDL', '').lower()}"
             if name not in df.columns:
                 try:
                     df[name] = func(o, high, low, close)
@@ -241,19 +256,20 @@ class FeatureEngine:
 #  ModelTrainer — training + evaluation
 # =========================================================================
 
+
 class ModelTrainer:
     """Handles model training, evaluation, and walk-forward."""
 
     def __init__(self, config: PipelineConfig, random_state: int = 42):
         self.config = config
         self.random_state = random_state
-        self.preprocessors: Dict[str, Optional[Pipeline]] = {"long": None, "short": None}
+        self.preprocessors: dict[str, Pipeline | None] = {"long": None, "short": None}
 
     def prepare_data(
         self,
         df: pd.DataFrame,
         side: str,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Temporal train/test split with scaler fitted ONLY on train."""
         X = df[self.config.selected_features]
         y = df[f"{side}_target"]
@@ -263,10 +279,12 @@ class ModelTrainer:
         X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
         y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
-        preprocessor = Pipeline(steps=[
-            ("imputer", SimpleImputer(strategy="mean")),
-            ("scaler", StandardScaler()),
-        ])
+        preprocessor = Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="mean")),
+                ("scaler", StandardScaler()),
+            ]
+        )
         X_train_np = preprocessor.fit_transform(X_train)
         X_test_np = preprocessor.transform(X_test)
         self.preprocessors[side] = preprocessor
@@ -286,11 +304,9 @@ class ModelTrainer:
         X_train: np.ndarray,
         y_train: np.ndarray,
         side: str,
-    ) -> Tuple[xgb.XGBClassifier, Dict[str, float]]:
+    ) -> tuple[xgb.XGBClassifier, dict[str, float]]:
         """Train a single XGBoost model."""
-        params = (
-            self.config.long_params if side == "long" else self.config.short_params
-        )
+        params = self.config.long_params if side == "long" else self.config.short_params
 
         pos = int((y_train == 1).sum())
         neg = int((y_train == 0).sum())
@@ -317,7 +333,7 @@ class ModelTrainer:
         model: xgb.XGBClassifier,
         X_test: np.ndarray,
         y_test: np.ndarray,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Evaluate on test set."""
         pred = model.predict(X_test)
         metrics = {
@@ -363,10 +379,12 @@ class ModelTrainer:
             X_test = X_full.iloc[t0:t1]
             if len(X_test) == 0:
                 continue
-            pp = Pipeline(steps=[
-                ("imputer", SimpleImputer(strategy="mean")),
-                ("scaler", StandardScaler()),
-            ])
+            pp = Pipeline(
+                steps=[
+                    ("imputer", SimpleImputer(strategy="mean")),
+                    ("scaler", StandardScaler()),
+                ]
+            )
             X_tr = pp.fit_transform(X_train)
             X_te = pp.transform(X_test)
             y_tr = y_full.iloc[:t0]
@@ -389,6 +407,7 @@ class ModelTrainer:
 #  SignalGenerator — position sizing and signal filtering
 # =========================================================================
 
+
 class SignalGenerator:
     """Generate trading signals with position sizing."""
 
@@ -398,9 +417,9 @@ class SignalGenerator:
     def calculate_position_size(
         self,
         probability: float,
-        model_config: Dict,
+        model_config: dict,
         current_drawdown: float = 0,
-        market_data: Optional[pd.Series] = None,
+        market_data: pd.Series | None = None,
     ) -> float:
         """Calculate position size based on confidence and risk."""
         pos_cfg = model_config["position_sizing"]
@@ -416,8 +435,9 @@ class SignalGenerator:
         if pos_cfg.get("volatility_adjustment") and market_data is not None:
             if market_data.get("volatility_regime", 0) == 1:
                 vol_factor = 0.75
-            if (abs(market_data.get("trend_direction", 0)) == 1 and
-                    market_data.get("volume_trend_confirm", 0) == market_data.get("trend_direction", 0)):
+            if abs(market_data.get("trend_direction", 0)) == 1 and market_data.get(
+                "volume_trend_confirm", 0
+            ) == market_data.get("trend_direction", 0):
                 vol_factor *= 1.25
             if market_data.get("trend_exhaustion", 0) == 1:
                 vol_factor *= 0.75
@@ -451,13 +471,27 @@ class SignalGenerator:
             lp = signals.loc[idx, "long_prob"]
             sp = signals.loc[idx, "short_prob"]
 
-            ls = self.calculate_position_size(
-                lp, self.config.model_config["long_model"], current_drawdown, row,
-            ) if lp >= long_th and lp >= long_min else 0.0
+            ls = (
+                self.calculate_position_size(
+                    lp,
+                    self.config.model_config["long_model"],
+                    current_drawdown,
+                    row,
+                )
+                if lp >= long_th and lp >= long_min
+                else 0.0
+            )
 
-            ss = self.calculate_position_size(
-                sp, self.config.model_config["short_model"], current_drawdown, row,
-            ) if sp >= short_th and sp >= short_min else 0.0
+            ss = (
+                self.calculate_position_size(
+                    sp,
+                    self.config.model_config["short_model"],
+                    current_drawdown,
+                    row,
+                )
+                if sp >= short_th and sp >= short_min
+                else 0.0
+            )
 
             # Trend filter
             td = row.get("trend_direction", 0)
@@ -493,6 +527,7 @@ class SignalGenerator:
 #  ResultAnalyzer — plotting and reporting
 # =========================================================================
 
+
 class ResultAnalyzer:
     """Analyze and visualize pipeline results."""
 
@@ -500,10 +535,9 @@ class ResultAnalyzer:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def analyze_results(self, results: Dict, save_plots: bool = True) -> None:
+    def analyze_results(self, results: dict, save_plots: bool = True) -> None:
         """Generate analysis plots for pipeline results."""
         import matplotlib.pyplot as plt
-        import seaborn as sns
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -521,8 +555,8 @@ class ResultAnalyzer:
 
     def get_feature_importance(
         self,
-        models: Dict[str, xgb.XGBClassifier],
-        feature_names: List[str],
+        models: dict[str, xgb.XGBClassifier],
+        feature_names: list[str],
     ) -> pd.DataFrame:
         """Extract feature importance from both models."""
         frames = []
@@ -541,13 +575,14 @@ class ResultAnalyzer:
 #  MLPipeline — orchestrator
 # =========================================================================
 
+
 class MLPipeline:
     """Orchestrates feature engineering, training, and prediction."""
 
     def __init__(self, config: PipelineConfig):
         self.config = config
         self.logger = logging.getLogger(__name__)
-        self.models: Dict[str, Optional[xgb.XGBClassifier]] = {"long": None, "short": None}
+        self.models: dict[str, xgb.XGBClassifier | None] = {"long": None, "short": None}
         self.random_state = 42
         np.random.seed(self.random_state)
         random.seed(self.random_state)
@@ -589,7 +624,7 @@ class MLPipeline:
 
     # ---- High-level methods ----
 
-    def train(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def train(self, df: pd.DataFrame) -> dict[str, Any]:
         """Train both long and short models."""
         results = {
             "long_metrics": {},
@@ -609,10 +644,12 @@ class MLPipeline:
             results[f"{side}_metrics"] = test_metrics
 
             importance = self.analyzer.get_feature_importance(
-                {side: model}, self.config.selected_features,
+                {side: model},
+                self.config.selected_features,
             )
             results["feature_importance"] = pd.concat(
-                [results["feature_importance"], importance], axis=1,
+                [results["feature_importance"], importance],
+                axis=1,
             )
 
             pp = self.trainer.preprocessors[side]
@@ -650,7 +687,7 @@ class MLPipeline:
 
         return predictions
 
-    def analyze_results(self, results: Dict, save_plots: bool = True) -> None:
+    def analyze_results(self, results: dict, save_plots: bool = True) -> None:
         self.analyzer.analyze_results(results, save_plots)
 
     def get_feature_importance(self, model, side):
@@ -660,7 +697,7 @@ class MLPipeline:
             name=f"{side}_importance",
         )
 
-    def calculate_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+    def calculate_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
         return {
             "accuracy": accuracy_score(y_true, y_pred),
             "precision": precision_score(y_true, y_pred, zero_division=0),

@@ -1,16 +1,15 @@
 """Tests for ml/pipeline.py — the decomposed ML pipeline orchestrator."""
+
 import numpy as np
-import pandas as pd
 import pytest
-from unittest.mock import MagicMock, patch
 
 from ml.pipeline import (
     FeatureEngine,
-    ModelTrainer,
-    SignalGenerator,
-    ResultAnalyzer,
-    PipelineConfig,
     ModelConfig,
+    ModelTrainer,
+    PipelineConfig,
+    ResultAnalyzer,
+    SignalGenerator,
     _safe_div,
 )
 
@@ -111,8 +110,8 @@ class TestFeatureEngine:
 
     def test_caching_works(self, sample_ohlcv_large, mock_pipeline_config):
         engine = FeatureEngine(mock_pipeline_config)
-        df1 = engine.calculate_advanced_features(sample_ohlcv_large.copy())
-        df2 = engine.calculate_advanced_features(sample_ohlcv_large.copy())
+        engine.calculate_advanced_features(sample_ohlcv_large.copy())
+        engine.calculate_advanced_features(sample_ohlcv_large.copy())
         assert len(engine._cache) > 0
 
 

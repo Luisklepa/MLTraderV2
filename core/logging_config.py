@@ -5,6 +5,7 @@ Call ``setup_logging()`` once at the start of every entry-point
 (app.py, scripts, CLI commands) to wire up console + file logging
 using settings from ``config.settings.LogConfig``.
 """
+
 import logging
 import sys
 from pathlib import Path
@@ -56,12 +57,15 @@ def setup_logging(
         from logging.handlers import RotatingFileHandler
 
         file_handler = RotatingFileHandler(
-            file_path, maxBytes=10 * 1024 * 1024, backupCount=5,
+            file_path,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
         )
         file_handler.setLevel(numeric_level)
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
     except OSError:
         logging.getLogger(__name__).warning(
-            "Could not create log file at %s — file logging disabled", file_path,
+            "Could not create log file at %s — file logging disabled",
+            file_path,
         )

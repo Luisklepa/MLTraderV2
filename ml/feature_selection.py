@@ -1,18 +1,19 @@
 """Automated feature selection for production ML pipelines."""
-import pandas as pd
-import numpy as np
-from typing import List, Optional
+
 import logging
+
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 
 def remove_highly_correlated(
     df: pd.DataFrame,
-    feature_cols: List[str],
+    feature_cols: list[str],
     threshold: float = 0.95,
-    importance: Optional[pd.Series] = None,
-) -> List[str]:
+    importance: pd.Series | None = None,
+) -> list[str]:
     """Remove features with pairwise correlation above *threshold*.
 
     When *importance* is provided (a Series mapping feature name -> score),
@@ -40,9 +41,9 @@ def remove_highly_correlated(
 
 def select_top_features_by_importance(
     model,
-    feature_cols: List[str],
+    feature_cols: list[str],
     top_n: int = 50,
-) -> List[str]:
+) -> list[str]:
     """Select top N features by model feature importance."""
     if not hasattr(model, "feature_importances_"):
         logger.warning("Model has no feature_importances_, returning all features")
@@ -57,11 +58,11 @@ def select_top_features_by_importance(
 
 def auto_select_features(
     df: pd.DataFrame,
-    feature_cols: List[str],
+    feature_cols: list[str],
     model=None,
     correlation_threshold: float = 0.95,
     max_features: int = 50,
-) -> List[str]:
+) -> list[str]:
     """Full feature selection pipeline: correlation filter + importance ranking.
 
     If *model* is provided, its feature importances are used both for
@@ -72,7 +73,10 @@ def auto_select_features(
         importance = pd.Series(model.feature_importances_, index=feature_cols)
 
     cols = remove_highly_correlated(
-        df, feature_cols, threshold=correlation_threshold, importance=importance,
+        df,
+        feature_cols,
+        threshold=correlation_threshold,
+        importance=importance,
     )
 
     if model is not None and len(cols) > max_features:

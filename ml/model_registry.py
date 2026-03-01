@@ -1,12 +1,12 @@
 """Versioned model registry for production ML models."""
-import os
+
 import json
-import shutil
-import joblib
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional, List
 from pathlib import Path
+from typing import Any
+
+import joblib
 
 from core.exceptions import ModelError
 
@@ -25,9 +25,9 @@ def _ensure_registry() -> Path:
 def save_model(
     model: Any,
     version: str,
-    metrics: Dict[str, float],
-    feature_names: List[str],
-    config: Optional[Dict] = None,
+    metrics: dict[str, float],
+    feature_names: list[str],
+    config: dict | None = None,
     scaler: Any = None,
 ) -> str:
     """Save a model with metadata to the registry.
@@ -72,7 +72,7 @@ def load_model(version: str) -> tuple:
 
     model = joblib.load(model_dir / "model.pkl")
 
-    with open(model_dir / METADATA_FILE, "r") as f:
+    with open(model_dir / METADATA_FILE) as f:
         metadata = json.load(f)
 
     scaler_path = model_dir / "scaler.pkl"
@@ -82,7 +82,7 @@ def load_model(version: str) -> tuple:
     return model, metadata, scaler
 
 
-def list_versions() -> List[Dict]:
+def list_versions() -> list[dict]:
     """List all model versions in the registry, newest first."""
     registry = _ensure_registry()
     versions = []
@@ -97,7 +97,7 @@ def list_versions() -> List[Dict]:
     return versions
 
 
-def validate_features(version: str, current_features: List[str]) -> bool:
+def validate_features(version: str, current_features: list[str]) -> bool:
     """Check that the current feature set matches the model's expected features."""
     _, metadata, _ = load_model(version)
     expected = set(metadata["feature_names"])

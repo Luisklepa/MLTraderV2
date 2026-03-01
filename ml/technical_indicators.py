@@ -4,10 +4,10 @@ Config-driven technical indicator generation using TA-Lib.
 Used by ml/pipeline.py. For the standalone pipeline, use
 ml/feature_pipeline.py instead.
 """
+
 import numpy as np
 import pandas as pd
 import talib
-from typing import Dict, Optional
 
 
 def _safe_div(a, b, fill: float = 0.0):
@@ -18,13 +18,13 @@ def _safe_div(a, b, fill: float = 0.0):
 
 def add_momentum_indicators(
     df: pd.DataFrame,
-    config: Dict,
+    config: dict,
     price_col: str = "close",
 ) -> pd.DataFrame:
     """Add momentum indicators from config dict."""
     if "rsi" in config:
         p = config["rsi"]["params"]
-        df[f'rsi_{p["window"]}'] = talib.RSI(df[price_col].values, timeperiod=p["window"])
+        df[f"rsi_{p['window']}"] = talib.RSI(df[price_col].values, timeperiod=p["window"])
 
     if "macd" in config:
         p = config["macd"]["params"]
@@ -41,7 +41,9 @@ def add_momentum_indicators(
     if "stoch" in config:
         p = config["stoch"]["params"]
         k, d = talib.STOCH(
-            df["high"].values, df["low"].values, df[price_col].values,
+            df["high"].values,
+            df["low"].values,
+            df[price_col].values,
             fastk_period=p["k_window"],
             slowk_period=p["k_window"],
             slowd_period=p["d_window"],
@@ -54,14 +56,16 @@ def add_momentum_indicators(
 
 def add_volatility_indicators(
     df: pd.DataFrame,
-    config: Dict,
+    config: dict,
     price_col: str = "close",
 ) -> pd.DataFrame:
     """Add volatility indicators from config dict."""
     if "atr" in config:
         p = config["atr"]["params"]
-        df[f'atr_{p["window"]}'] = talib.ATR(
-            df["high"].values, df["low"].values, df[price_col].values,
+        df[f"atr_{p['window']}"] = talib.ATR(
+            df["high"].values,
+            df["low"].values,
+            df[price_col].values,
             timeperiod=p["window"],
         )
 
@@ -84,7 +88,7 @@ def add_volatility_indicators(
 
 def add_volume_indicators(
     df: pd.DataFrame,
-    config: Dict,
+    config: dict,
     price_col: str = "close",
     volume_col: str = "volume",
 ) -> pd.DataFrame:
@@ -98,7 +102,8 @@ def add_volume_indicators(
         tp = (df["high"] + df["low"] + df[price_col]) / 3
         df["vwap"] = (tp * df[volume_col]).rolling(w).sum() / df[volume_col].rolling(w).sum()
         df["vwap_distance"] = _safe_div(
-            (df[price_col] - df["vwap"]).values, df["vwap"].values,
+            (df[price_col] - df["vwap"]).values,
+            df["vwap"].values,
         )
 
     return df
@@ -106,24 +111,30 @@ def add_volume_indicators(
 
 def add_trend_indicators(
     df: pd.DataFrame,
-    config: Dict,
+    config: dict,
     price_col: str = "close",
 ) -> pd.DataFrame:
     """Add trend indicators."""
     for period in [20, 50]:
         df[f"ema_{period}"] = talib.EMA(df[price_col].values, timeperiod=period)
         df[f"price_ema_{period}_ratio"] = _safe_div(
-            df[price_col].values, df[f"ema_{period}"].values,
+            df[price_col].values,
+            df[f"ema_{period}"].values,
         )
     return df
 
 
 def add_pattern_recognition(df: pd.DataFrame) -> pd.DataFrame:
     """Add candlestick pattern recognition."""
-    o, h, l, c = df["open"].values, df["high"].values, df["low"].values, df["close"].values
-    df["doji"] = talib.CDLDOJI(o, h, l, c)
-    df["hammer"] = talib.CDLHAMMER(o, h, l, c)
-    df["engulfing"] = talib.CDLENGULFING(o, h, l, c)
+    o, h, low_vals, c = (
+        df["open"].values,
+        df["high"].values,
+        df["low"].values,
+        df["close"].values,
+    )
+    df["doji"] = talib.CDLDOJI(o, h, low_vals, c)
+    df["hammer"] = talib.CDLHAMMER(o, h, low_vals, c)
+    df["engulfing"] = talib.CDLENGULFING(o, h, low_vals, c)
     return df
 
 
@@ -136,10 +147,12 @@ def add_support_resistance(
     df["resistance"] = df["high"].rolling(window=window).max()
     df["support"] = df["low"].rolling(window=window).min()
     df["resistance_distance"] = _safe_div(
-        (df["resistance"] - df[price_col]).values, df[price_col].values,
+        (df["resistance"] - df[price_col]).values,
+        df[price_col].values,
     )
     df["support_distance"] = _safe_div(
-        (df[price_col] - df["support"]).values, df[price_col].values,
+        (df[price_col] - df["support"]).values,
+        df[price_col].values,
     )
     df["breakout_high"] = (df[price_col] > df["resistance"].shift(1)).astype(int)
     df["breakout_low"] = (df[price_col] < df["support"].shift(1)).astype(int)
@@ -148,8 +161,8 @@ def add_support_resistance(
 
 def add_all_indicators(
     df: pd.DataFrame,
-    features_config: Dict,
-    data_config: Optional[Dict] = None,
+    features_config: dict,
+    data_config: dict | None = None,
 ) -> pd.DataFrame:
     """Add all technical indicators based on configuration dict."""
     result = df.copy()

@@ -1,26 +1,27 @@
 """Tests for ml/feature_pipeline.py — the central feature engineering module."""
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from ml.feature_pipeline import (
+    _EXCLUDE_COLS,
     MLFeaturePipeline,
-    _safe_div,
     _rolling_pct_rank,
     _rolling_slope,
-    add_price_features,
-    add_volume_features,
-    add_moving_average_features,
-    add_momentum_features,
-    add_volatility_features,
-    add_pattern_features,
-    add_market_structure_features,
-    add_temporal_features,
-    add_cross_features,
+    _safe_div,
     add_anti_failure_features,
-    add_lag_features,
     add_conditional_features,
-    _EXCLUDE_COLS,
+    add_cross_features,
+    add_lag_features,
+    add_market_structure_features,
+    add_momentum_features,
+    add_moving_average_features,
+    add_pattern_features,
+    add_price_features,
+    add_temporal_features,
+    add_volatility_features,
+    add_volume_features,
 )
 
 

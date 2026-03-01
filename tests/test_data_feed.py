@@ -1,11 +1,10 @@
 """Tests for core/data_feed.py — MLSignalData, OptimizedDataFeed, DataFeed."""
+
 import numpy as np
 import pandas as pd
 import pytest
-import tempfile
-import os
 
-from core.data_feed import OptimizedDataFeed, DataFeed, MLSignalData
+from core.data_feed import DataFeed, MLSignalData, OptimizedDataFeed
 
 
 # ---------------------------------------------------------------------------
@@ -35,8 +34,17 @@ class TestMLSignalData:
             MLSignalData(df="not a dataframe")
 
     def test_init_requires_datetime_index(self):
-        df = pd.DataFrame({"open": [1], "high": [2], "low": [0], "close": [1],
-                           "volume": [10], "target": [0], "signal_strength": [0.5]})
+        df = pd.DataFrame(
+            {
+                "open": [1],
+                "high": [2],
+                "low": [0],
+                "close": [1],
+                "volume": [10],
+                "target": [0],
+                "signal_strength": [0.5],
+            }
+        )
         with pytest.raises(ValueError, match="DatetimeIndex"):
             MLSignalData(df=df)
 
@@ -48,8 +56,13 @@ class TestMLSignalData:
         dates = pd.date_range("2024-01-01", periods=5, freq="h")
         df = pd.DataFrame(
             {
-                "open": [1]*5, "high": [2]*5, "low": [0]*5, "close": [1]*5,
-                "volume": [10]*5, "target": [0]*5, "signal_strength": [0.5]*5,
+                "open": [1] * 5,
+                "high": [2] * 5,
+                "low": [0] * 5,
+                "close": [1] * 5,
+                "volume": [10] * 5,
+                "target": [0] * 5,
+                "signal_strength": [0.5] * 5,
             },
             index=dates,
         )

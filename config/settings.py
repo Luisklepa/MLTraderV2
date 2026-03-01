@@ -2,9 +2,10 @@
 Unified configuration for the trading system.
 Uses Pydantic for validation and environment variable support.
 """
+
 import os
-from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -84,6 +85,7 @@ class LogConfig:
 @dataclass
 class TradingConfig:
     """Unified trading configuration with validation."""
+
     risk: RiskConfig = field(default_factory=RiskConfig)
     data: DataConfig = field(default_factory=DataConfig)
     api: APIConfig = field(default_factory=APIConfig)
@@ -123,35 +125,32 @@ class TradingConfig:
     def from_yaml(cls, path: str) -> "TradingConfig":
         """Load configuration from YAML file with env var overrides."""
         import yaml
-        with open(path, 'r') as f:
+
+        with open(path) as f:
             raw = yaml.safe_load(f)
 
-        risk_raw = raw.get('risk_config', {})
-        data_raw = raw.get('data_config', {})
+        risk_raw = raw.get("risk_config", {})
+        data_raw = raw.get("data_config", {})
 
         risk = RiskConfig(
-            initial_capital=float(os.environ.get(
-                "INITIAL_CAPITAL",
-                risk_raw.get('initial_capital', 10000.0)
-            )),
-            risk_per_trade=risk_raw.get('position_sizing', {}).get('base_risk_per_trade', 0.02),
-            max_drawdown=risk_raw.get('portfolio', {}).get('max_drawdown', 0.20),
-            max_position_size=risk_raw.get('position_sizing', {}).get('max_position_size', 0.25),
-            commission_rate=risk_raw.get('commission_rate', 0.001),
-            slippage_rate=risk_raw.get('slippage_rate', 0.0005),
-            max_leverage=risk_raw.get('portfolio', {}).get('max_leverage', 1.0),
-            position_limit=risk_raw.get('portfolio', {}).get('position_limit', 5),
+            initial_capital=float(os.environ.get("INITIAL_CAPITAL", risk_raw.get("initial_capital", 10000.0))),
+            risk_per_trade=risk_raw.get("position_sizing", {}).get("base_risk_per_trade", 0.02),
+            max_drawdown=risk_raw.get("portfolio", {}).get("max_drawdown", 0.20),
+            max_position_size=risk_raw.get("position_sizing", {}).get("max_position_size", 0.25),
+            commission_rate=risk_raw.get("commission_rate", 0.001),
+            slippage_rate=risk_raw.get("slippage_rate", 0.0005),
+            max_leverage=risk_raw.get("portfolio", {}).get("max_leverage", 1.0),
+            position_limit=risk_raw.get("portfolio", {}).get("position_limit", 5),
         )
 
         data = DataConfig(
             symbol=f"{data_raw.get('base_symbol', 'BTC')}{data_raw.get('quote_symbol', 'USDT')}",
-            timeframe=data_raw.get('timeframe', '15m'),
+            timeframe=data_raw.get("timeframe", "15m"),
         )
 
         return cls(risk=risk, data=data)
 
     @classmethod
-    def to_dict(cls) -> Dict[str, Any]:
+    def to_dict(cls) -> dict[str, Any]:
         """Convert config to dictionary (legacy compat)."""
-        return {k: v for k, v in cls.__dict__.items()
-                if not k.startswith('_') and k.isupper()}
+        return {k: v for k, v in cls.__dict__.items() if not k.startswith("_") and k.isupper()}

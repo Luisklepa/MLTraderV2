@@ -1,5 +1,5 @@
 """Tests for ml/signal_filter.py — market regime detection and signal filtering."""
-import numpy as np
+
 import pandas as pd
 import pytest
 
@@ -44,8 +44,12 @@ class TestMarketRegime:
         detector = MarketRegime()
         regimes = detector.identify_regime(df_for_filter)
         valid_labels = {
-            "neutral", "volatile_bullish", "volatile_bearish",
-            "volatile_sideways", "low_vol_bullish", "low_vol_bearish",
+            "neutral",
+            "volatile_bullish",
+            "volatile_bearish",
+            "volatile_sideways",
+            "low_vol_bullish",
+            "low_vol_bearish",
             "low_vol_sideways",
         }
         assert set(regimes.unique()).issubset(valid_labels)
@@ -72,15 +76,15 @@ class TestMLSignalFilter:
         sf = MLSignalFilter(filter_config)
         regimes = pd.Series(["low_vol_bullish", "volatile_bearish", "low_vol_sideways"])
         result = sf._apply_regime_filter(regimes, "long")
-        assert result.iloc[0] is True or result.iloc[0] == True
-        assert result.iloc[1] is False or result.iloc[1] == False
+        assert result.iloc[0] is True or result.iloc[0]
+        assert result.iloc[1] is False or not result.iloc[1]
 
     def test_regime_filter_short(self, filter_config):
         sf = MLSignalFilter(filter_config)
         regimes = pd.Series(["low_vol_bearish", "volatile_bullish", "low_vol_sideways"])
         result = sf._apply_regime_filter(regimes, "short")
-        assert result.iloc[0] is True or result.iloc[0] == True
-        assert result.iloc[1] is False or result.iloc[1] == False
+        assert result.iloc[0] is True or result.iloc[0]
+        assert result.iloc[1] is False or not result.iloc[1]
 
     def test_trend_filter_long(self, filter_config, df_for_filter):
         sf = MLSignalFilter(filter_config)
@@ -95,16 +99,20 @@ class TestMLSignalFilter:
     def test_filters_disabled(self, df_for_filter):
         """When all filters disabled, should pass everything through regime filter."""
         config = {
-            "long": {"filters": {
-                "volatility": {"enabled": False},
-                "volume": {"enabled": False},
-                "trend": {"enabled": False},
-            }},
-            "short": {"filters": {
-                "volatility": {"enabled": False},
-                "volume": {"enabled": False},
-                "trend": {"enabled": False},
-            }},
+            "long": {
+                "filters": {
+                    "volatility": {"enabled": False},
+                    "volume": {"enabled": False},
+                    "trend": {"enabled": False},
+                }
+            },
+            "short": {
+                "filters": {
+                    "volatility": {"enabled": False},
+                    "volume": {"enabled": False},
+                    "trend": {"enabled": False},
+                }
+            },
         }
         sf = MLSignalFilter(config)
         mask = sf.apply_filters(df_for_filter, "long")

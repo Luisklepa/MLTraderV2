@@ -5,11 +5,11 @@ Used by ml/pipeline.py via config-driven approach. For the standalone
 pipeline, use ml/feature_pipeline.py instead — it generates equivalent
 features directly.
 """
+
+import logging
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional
-from scipy import stats
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,10 @@ def _safe_div(a, b, fill: float = 0.0):
 
 # ---- Config-driven feature generators (used by pipeline.py) ----
 
+
 def add_return_features(
     df: pd.DataFrame,
-    config: Dict,
+    config: dict,
     price_col: str = "close",
 ) -> pd.DataFrame:
     """Add return-based features from config."""
@@ -44,7 +45,7 @@ def add_return_features(
 
 def add_volatility_features(
     df: pd.DataFrame,
-    config: Dict,
+    config: dict,
     price_col: str = "close",
 ) -> pd.DataFrame:
     """Add volatility-based features from config."""
@@ -59,9 +60,7 @@ def add_volatility_features(
         elif vol_type == "parkinson":
             high_low = np.log(df["high"] / df["low"])
             df[f"volatility_{window}"] = np.sqrt(
-                (1 / (4 * np.log(2)))
-                * high_low.pow(2).rolling(window).mean()
-                * np.sqrt(252)
+                (1 / (4 * np.log(2))) * high_low.pow(2).rolling(window).mean() * np.sqrt(252)
             )
 
     return df
@@ -69,7 +68,7 @@ def add_volatility_features(
 
 def add_zscore_features(
     df: pd.DataFrame,
-    config: Dict,
+    config: dict,
 ) -> pd.DataFrame:
     """Add z-score features with zero-std protection."""
     params = config["zscore"]["params"]
@@ -117,6 +116,7 @@ def add_entropy_features(
     bins: int = 10,
 ) -> pd.DataFrame:
     """Add entropy-based features."""
+
     def _entropy(x):
         hist, _ = np.histogram(x, bins=bins)
         p = hist / len(x)
@@ -131,8 +131,8 @@ def add_entropy_features(
 
 def add_all_statistical_features(
     df: pd.DataFrame,
-    features_config: Dict,
-    data_config: Optional[Dict] = None,
+    features_config: dict,
+    data_config: dict | None = None,
 ) -> pd.DataFrame:
     """Add all statistical features based on configuration dict."""
     result = df.copy()
@@ -153,6 +153,7 @@ def add_all_statistical_features(
 
 
 # ---- Standalone convenience functions ----
+
 
 def calculate_zscore(series: pd.Series, window: int) -> pd.Series:
     """Rolling z-score with zero-std protection."""

@@ -1,3 +1,3 @@
 """
 ML Strategy module initialization.
-""" 
+"""

@@ -1,9 +1,10 @@
 """Shared test fixtures for MLTraderV2 test suite."""
-import pytest
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+
 from unittest.mock import MagicMock
+
+import numpy as np
+import pandas as pd
+import pytest
 
 
 @pytest.fixture
@@ -21,13 +22,16 @@ def sample_ohlcv():
     open_ = close * (1 + np.random.normal(0, 0.0005, n_bars))
     volume = np.random.lognormal(10, 1, n_bars)
 
-    df = pd.DataFrame({
-        "open": open_,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        },
+        index=dates,
+    )
 
     df["high"] = df[["open", "high", "close"]].max(axis=1)
     df["low"] = df[["open", "low", "close"]].min(axis=1)
@@ -49,14 +53,17 @@ def sample_ohlcv_large():
     open_ = close * (1 + np.random.normal(0, 0.001, n_bars))
     volume = np.random.lognormal(10, 1, n_bars)
 
-    df = pd.DataFrame({
-        "open": open_,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-        "timestamp": dates,
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+            "timestamp": dates,
+        },
+        index=dates,
+    )
 
     df["high"] = df[["open", "high", "close"]].max(axis=1)
     df["low"] = df[["open", "low", "close"]].min(axis=1)
@@ -80,9 +87,7 @@ def trained_model_mock():
     """Mock XGBoost model for pipeline tests."""
     model = MagicMock()
     model.predict.return_value = np.array([0, 1, 0, 1, 0])
-    model.predict_proba.return_value = np.array([
-        [0.8, 0.2], [0.3, 0.7], [0.9, 0.1], [0.4, 0.6], [0.7, 0.3]
-    ])
+    model.predict_proba.return_value = np.array([[0.8, 0.2], [0.3, 0.7], [0.9, 0.1], [0.4, 0.6], [0.7, 0.3]])
     model.feature_importances_ = np.array([0.3, 0.2, 0.15, 0.1, 0.25])
     return model
 
