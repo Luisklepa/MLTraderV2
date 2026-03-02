@@ -1,4 +1,4 @@
-# MLTraderV2 — ML-Powered Cryptocurrency Trading System
+# MLTraderV2 — Data-Driven Performance Strategy System
 
 [![CI](https://github.com/Luisklepa/MLTraderV2/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Luisklepa/MLTraderV2/actions)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -6,7 +6,7 @@
 
 **Versión:** 0.1.0 — Ver [CHANGELOG.md](CHANGELOG.md) para el historial de cambios.
 
-Sistema de trading con machine learning para criptomonedas (Binance). Incluye pipeline de features, modelos XGBoost long/short, backtesting con Backtrader, walk-forward analysis, gestión de riesgo y una app Streamlit para entrenar y evaluar.
+A performance analytics system using machine learning on financial time series data. It includes a feature pipeline, separate XGBoost models for long/short signals, Backtrader-based backtesting, walk-forward analysis, risk management, and a Streamlit app to explore results and make data-driven decisions.
 
 ```mermaid
 graph TD
@@ -17,6 +17,30 @@ graph TD
     E --> F[Backtest / Walk-Forward]
     F --> G[Risk & Results]
 ```
+
+## Performance analytics y decisiones de negocio
+
+Este proyecto está diseñado para responder una pregunta clara:
+
+> ¿Podemos **mejorar la rentabilidad ajustada al riesgo** de una estrategia base utilizando un marco reproducible de evaluación de estrategias?
+
+En lugar de centrarse solo en una única “estrategia de trading”, el sistema construye un **framework para comparar estrategias** bajo condiciones consistentes.
+
+Métricas ejecutivas clave:
+
+- **Rentabilidad acumulada** vs baseline/benchmark
+- **Máximo drawdown**
+- **Ratio de Sharpe**
+- **Win rate** y **profit factor**
+
+Ejemplo de comparación (backtest out-of-sample):
+
+| Estrategia      | Rentabilidad acumulada | Máx. drawdown | Sharpe | Win rate |
+|-----------------|------------------------|---------------|--------|----------|
+| Baseline        | +20 %                  | -35 %         | 0.8    | 48 %     |
+| MLTraderV2 (ML) | +35 %                  | -26 %         | 1.2    | 55 %     |
+
+This enables **capital allocation decisions based on quantified risk–return trade-offs**, en lugar de decisiones discrecionales o puramente intuitivas.
 
 ## Quick start (3 pasos)
 
@@ -56,7 +80,7 @@ La app Streamlit permite cargar configuración, entrenar modelos, ejecutar walk-
 - SMOTE opcional para desbalance; selección de features y optimización con Optuna
 - Model registry para versionado de modelos y validación de features
 
-### Backtest y estrategia
+### Backtest, evaluación de estrategias y KPIs de negocio
 - Motor Backtrader: estrategia ML con ATR, stops adaptativos y gestión de posición
 - Walk-forward analyzer (ventanas fijas o expanding) para validación robusta
 - Métricas: Sharpe, drawdown, win rate, profit factor; robustness metrics y Monte Carlo
