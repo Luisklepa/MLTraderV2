@@ -8,6 +8,8 @@
 
 A performance analytics system using machine learning on financial time series data. It includes a feature pipeline, separate XGBoost models for long/short signals, Backtrader-based backtesting, walk-forward analysis, risk management, and a Streamlit app to explore results and make data-driven decisions.
 
+_Sistema de **performance analytics** con machine learning aplicado a series temporales financieras. Incluye pipeline de features, modelos XGBoost long/short, backtesting con Backtrader, análisis walk-forward, gestión de riesgo y una app Streamlit para explorar resultados y tomar decisiones basadas en datos._
+
 ```mermaid
 graph TD
     A[Binance Data] --> B[Feature Engineering]
@@ -18,7 +20,31 @@ graph TD
     F --> G[Risk & Results]
 ```
 
-## Performance analytics y decisiones de negocio
+## Performance analytics and business decisions
+
+This project is designed to answer a clear question:
+
+> Can we **improve risk-adjusted returns** of a baseline strategy using a reproducible framework for strategy evaluation?
+
+Instead of focusing on a single “trading strategy”, the system builds a **framework to compare strategies** under consistent conditions.
+
+Key executive metrics:
+
+- **Cumulative return** vs baseline/benchmark
+- **Maximum drawdown**
+- **Sharpe ratio**
+- **Win rate** and **profit factor**
+
+Example comparison (out-of-sample backtest):
+
+| Strategy        | Cumulative return | Max drawdown | Sharpe | Win rate |
+|----------------|-------------------|--------------|--------|----------|
+| Baseline       | +20 %             | -35 %        | 0.8    | 48 %     |
+| MLTraderV2 (ML)| +35 %             | -26 %        | 1.2    | 55 %     |
+
+This enables **capital allocation decisions based on quantified risk–return trade-offs**, instead of purely discretionary or intuition-based decisions.
+
+### (ES) Performance analytics y decisiones de negocio
 
 Este proyecto está diseñado para responder una pregunta clara:
 
@@ -39,8 +65,6 @@ Ejemplo de comparación (backtest out-of-sample):
 |-----------------|------------------------|---------------|--------|----------|
 | Baseline        | +20 %                  | -35 %         | 0.8    | 48 %     |
 | MLTraderV2 (ML) | +35 %                  | -26 %         | 1.2    | 55 %     |
-
-This enables **capital allocation decisions based on quantified risk–return trade-offs**, en lugar de decisiones discrecionales o puramente intuitivas.
 
 ## Quick start (3 pasos)
 
